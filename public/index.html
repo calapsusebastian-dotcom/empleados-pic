@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0B2925">
+<meta name="theme-color" content="#14253F">
 <title>Control de Ingreso y Salida</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -499,6 +499,101 @@ td small,.foot-note,.muted{font-size:11.5px}
   td::before{font-size:10px}
   .sub{min-height:34px}
 }
+</style>
+<style>
+/* ===== Estilo corporativo: azul marino, grises neutros, líneas finas, sin efectos ===== */
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --sunk:#F7F8FA; --ink:#1B2433; --muted:#667085; --line:#E1E5EB;
+  --hero:#14253F; --hero-2:#14253F; --hero-ink:#FFFFFF; --hero-muted:#9AA9BF; --glow-a:transparent; --glow-b:transparent;
+  --accent:#1F4F8B; --accent-ink:#FFFFFF; --accent-soft:#E8EFF8;
+  --in:#1B7F55; --in-bg:#E4F3EC; --out:#B4590A; --out-bg:#FBEEDD; --danger:#B42318; --danger-bg:#FDECEA;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.04);
+  --f-display:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1420; --surface:#161E2D; --sunk:#121927; --ink:#E8ECF3; --muted:#94A0B4; --line:#263147;
+  --hero:#0A111C; --hero-2:#0A111C; --accent:#5B9BE0; --accent-ink:#08111F; --accent-soft:#1A2B45;
+  --in:#4CC28C; --in-bg:#12301F; --out:#F0A45A; --out-bg:#35230F; --danger:#F08A80; --danger-bg:#3A1A17;
+  --shadow:0 1px 2px rgba(0,0,0,.4)}}
+:root[data-theme="dark"]{
+  --bg:#0E1420; --surface:#161E2D; --sunk:#121927; --ink:#E8ECF3; --muted:#94A0B4; --line:#263147;
+  --hero:#0A111C; --hero-2:#0A111C; --accent:#5B9BE0; --accent-ink:#08111F; --accent-soft:#1A2B45;
+  --in:#4CC28C; --in-bg:#12301F; --out:#F0A45A; --out-bg:#35230F; --danger:#F08A80; --danger-bg:#3A1A17;
+  --shadow:0 1px 2px rgba(0,0,0,.4)}
+
+h1,h2,h3{letter-spacing:-.01em}
+/* franja superior sólida */
+.hero{background:var(--hero);border-bottom:3px solid var(--accent)}
+.hero::after{display:none}
+.live{display:none}
+.brand-mark{background:var(--accent);border-radius:8px;box-shadow:none;width:32px;height:32px}
+.brand-mark::before{width:16px;height:16px;border-width:2px}
+.brand-mark::after{top:11px;width:2px;height:7px}
+.brand-name{font-weight:700;letter-spacing:0}
+.tabs{background:rgba(255,255,255,.08);border-radius:8px}
+.tab{border-radius:6px}
+.tab.on{background:#fff;color:var(--hero)}
+.user-box{border-radius:8px;background:rgba(255,255,255,.08);padding:3px 3px 3px 12px}
+.user-box .tab{border-radius:6px}
+
+/* reloj plano */
+.eyebrow{color:var(--hero-muted);font-weight:600;letter-spacing:.14em}
+.clock{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:#fff;text-shadow:none;font-family:var(--f-body);font-weight:600;letter-spacing:-.02em;font-size:clamp(40px,7vw,64px)}
+.clock-side .sec{color:var(--hero-muted);font-family:var(--f-body);font-weight:500}
+.clock-side .ampm{color:var(--hero-muted);font-family:var(--f-body)}
+.sec-bar{height:2px;background:rgba(255,255,255,.14)}
+.sec-bar i{background:#fff;opacity:.7}
+.date{font-weight:500;font-size:13px}
+@media (max-width:760px){.clock{font-size:clamp(40px,14vw,56px)}}
+
+/* tarjetas, paneles y formularios */
+.card,.panel,.filters,.stat,.inside,.table-wrap,.admin-head{border-radius:10px;box-shadow:var(--shadow)}
+.admin-head{padding:4px}
+.stat::after{display:none}
+.stat{border-left:3px solid var(--line)}
+.stat:nth-child(1){border-left-color:var(--accent)} .stat:nth-child(2){border-left-color:var(--in)} .stat:nth-child(3),.stat:nth-child(4){border-left-color:var(--out)}
+.stat .v{font-weight:700;letter-spacing:-.02em}
+.lbl .n{background:var(--accent);color:#fff;border-radius:6px;font-family:var(--f-body);width:22px;height:22px}
+.person{background:var(--sunk);border-radius:10px}
+.avatar{background:var(--accent);box-shadow:none;border-radius:10px;font-weight:700}
+input[type=search],input[type=text],input[type=password],input[type=date],select,textarea{border-width:1px;border-radius:8px;background:var(--surface)}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px var(--accent-soft)}
+.empty{border-radius:10px;border-width:1px}
+.pad-wrap{border-radius:10px;border-width:1px;background:var(--surface)}
+
+/* botones planos */
+.btn{border-width:1px;border-radius:8px;box-shadow:none}
+.btn.primary{box-shadow:none;background:var(--accent)}
+.btn.primary:hover{filter:brightness(1.1);transform:none}
+.btn.big{border-radius:8px;font-family:var(--f-body);letter-spacing:0}
+.sub{border-radius:6px}
+.sub.on{background:var(--accent)}
+.seg-b{border-width:1px;border-radius:10px;font-family:var(--f-body);transition:border-color .15s,background .15s}
+.seg-b:hover{transform:none;border-color:var(--muted)}
+.seg-b .ico{border-radius:8px}
+.seg-b.in.on,.seg-b.out.on{box-shadow:none;border-width:2px}
+.chip{border-radius:6px;border-width:1px}
+.chip.on{font-weight:600}
+.pill,.tag,.status{border-radius:5px}
+.tag::before{box-shadow:none;margin-left:2px}
+.pill{letter-spacing:.04em;font-weight:700}
+
+/* tablas */
+th{background:var(--sunk);color:var(--muted);letter-spacing:.06em}
+tbody tr:hover{background:var(--sunk)}
+.sig{border-radius:4px}
+
+/* resultado y ventanas */
+.ok-badge{box-shadow:none;animation:none;width:64px;height:64px;font-size:28px}
+.ok-badge.in{box-shadow:0 0 0 6px var(--in-bg)} .ok-badge.out{box-shadow:0 0 0 6px var(--out-bg)}
+.ok .big-time{font-family:var(--f-body);font-weight:600}
+.modal{backdrop-filter:none;background:rgba(15,23,42,.55)}
+.modal-box{border-radius:12px;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}
+@media (max-width:760px){.modal-box{border-radius:14px 14px 0 0}.btn:hover{border-color:var(--line)}}
+.note,.err{border-radius:8px}
+#loginForm::before{font-weight:700}
+.kiosk{margin-top:-44px}
 </style>
 </head>
 <body>
