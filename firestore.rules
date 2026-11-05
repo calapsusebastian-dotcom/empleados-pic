@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore — Control de Ingreso y Salida
+// IMPORTANTE: cambie el correo del administrador en la función esAdmin()
+// (debe coincidir con ADMIN_EMAILS en public/config.js).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function esAdmin() {
+      return autenticado()
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          'coocentralempleados@gmail.com'
+        ];
+    }
+
+    function rutaEmpleado() {
+      return /databases/$(database)/documents/empleados/$(request.auth.uid);
+    }
+
+    // Nombre de la empresa: visible en la pantalla de inicio, solo el admin lo cambia.
+    match /ajustes/{id} {
+      allow read: if true;
+      allow write: if esAdmin();
+    }
+
+    // Ficha de cada empleado (el id del documento es su uid de Authentication).
+    match /empleados/{uid} {
+      allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
+      allow write: if esAdmin();
+    }
+
+    // Marcas de ingreso y salida.
+    match /marcas/{id} {
+      // El admin lee todo; cada empleado solo sus propias marcas.
+      allow read: if esAdmin()
+        || (autenticado() && resource.data.empleadoId == request.auth.uid);
+
+      // Solo el propio empleado activo crea su marca, con la hora del servidor.
+      allow create: if autenticado()
+        && exists(rutaEmpleado())
+        && get(rutaEmpleado()).data.activo == true
+        && request.resource.data.keys().hasOnly(
+             ['empleadoId','nombre','cedula','cargo','tipo','ts','motivo','detalle','firma','dispositivo'])
+        && request.resource.data.empleadoId == request.auth.uid
+        && request.resource.data.nombre == get(rutaEmpleado()).data.nombre
+        && request.resource.data.cedula == string(get(rutaEmpleado()).data.cedula)
+        && request.resource.data.ts == request.time
+        && request.resource.data.tipo in ['ingreso', 'salida']
+        && (request.resource.data.tipo == 'ingreso'
+            || (request.resource.data.motivo is string && request.resource.data.motivo.size() > 0))
+        && request.resource.data.firma is string
+        && request.resource.data.firma.size() > 100
+        && request.resource.data.firma.size() < 300000;
+
+      // Nadie modifica una marca; solo el admin puede eliminar.
+      allow update: if false;
+      allow delete: if esAdmin();
+    }
+  }
+}
