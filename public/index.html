@@ -378,6 +378,78 @@ select{appearance:none;-webkit-appearance:none;padding-right:38px;
   :root{--line:#8a9a94}
 }
 </style>
+<style>
+/* ===== Ajuste de escala: más compacto y elegante ===== */
+body{font-size:14px}
+@media (min-width:1500px){body{font-size:14.5px}}
+@media (min-width:2200px){body{font-size:15px}}
+.btn,.tab,.sub,.chip{min-height:38px}
+.btn{padding:8px 16px;font-size:13.5px}
+.btn.big{padding:13px;font-size:15px;border-radius:12px}
+.tab{padding:6px 14px;font-size:13px}
+.sub{padding:8px 14px;font-size:13.5px}
+.chip{padding:6px 13px;font-size:13px}
+input[type=search],input[type=text],input[type=password],input[type=date],select,textarea{font-size:15px;min-height:42px;padding:9px 13px;border-radius:10px}
+#lUsuario,#lClave{font-size:15px;padding:10px 14px}
+.field > span{font-size:11px}
+.lbl{font-size:14px}
+
+/* reloj más discreto */
+.hero-clock{padding-block:10px 70px;gap:2px}
+.clock{font-size:clamp(44px,8vw,76px)}
+.clock-side .sec{font-size:clamp(14px,2vw,20px)}
+.clock-side .ampm{font-size:11px}
+.date{font-size:14px;margin-top:2px}
+.eyebrow{font-size:10.5px}
+.top-in{padding-block:12px}
+.brand-mark{width:34px;height:34px;border-radius:10px}
+.brand-name{font-size:16px}
+.brand-sub{font-size:11.5px}
+.hero-title{font-size:clamp(22px,3vw,30px)}
+.hero-admin{padding-block:4px 60px}
+.kiosk{max-width:440px;margin-top:-52px}
+.form-card{padding:22px}
+.card{border-radius:18px}
+
+/* login */
+#loginForm{gap:14px;margin-bottom:0}
+#loginForm::before{content:"Bienvenido";font-family:var(--f-display);font-weight:800;font-size:22px;letter-spacing:-.02em}
+#loginForm .lbl{font-weight:500;font-size:13.5px;color:var(--muted);margin-top:-8px;font-family:var(--f-body)}
+#loginForm .lbl .n{display:none}
+#loginForm .muted{text-align:center;line-height:1.45;font-size:12px!important}
+#loginBtn{margin-top:4px}
+
+/* paneles y tarjetas */
+.person .nm{font-size:18px}
+.avatar{width:44px;height:44px;font-size:16px;border-radius:13px}
+.seg-b{font-size:16px;padding:12px 10px;border-radius:14px}
+.seg-b .ico{width:36px;height:36px}
+.ok h2{font-size:24px}
+.ok .big-time{font-size:40px}
+.ok-badge{width:76px;height:76px;font-size:32px}
+.stat .v{font-size:28px}
+.stat .k{font-size:10.5px}
+.stat{padding:13px 16px}
+.panel{padding:18px}
+.panel h3{font-size:18px}
+.gate h2{font-size:22px}
+th{padding:10px 12px;font-size:10.5px}
+td{padding:9px 12px}
+.modal-box h3{font-size:20px}
+.modal-box{max-width:500px;padding:22px}
+@media (min-width:761px){.kiosk{max-width:460px}}
+@media (max-width:760px){
+  .kiosk{max-width:none;margin-top:-48px}
+  .form-card{padding:18px}
+  .clock{font-size:clamp(44px,16vw,64px)}
+  .stat .v{font-size:24px}
+  #confirmar{box-shadow:0 10px 24px -10px var(--accent),0 0 0 5px var(--surface)}
+}
+@media (max-width:380px){
+  .seg-b{font-size:14.5px}
+  .clock{font-size:46px}
+}
+</style>
 </head>
 <body>
 <div id="banner" class="banner" hidden><div class="wrap" id="bannerText"></div></div>
