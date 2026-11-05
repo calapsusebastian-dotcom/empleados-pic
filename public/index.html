@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B2925">
+<title>Control de Ingreso y Salida</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Layout: a deep jade "night shift" band carries a digital punch clock; the marking card floats over its edge.
+   Admin keeps the band short and lays the ledger out in soft floating panels. */
+:root{
+  --bg:#EEF2EF; --surface:#FFFFFF; --sunk:#F4F7F5; --ink:#0E1D1A; --muted:#5E6F69; --line:#DCE4E0;
+  --hero:#0B2925; --hero-2:#0F3A33; --hero-ink:#ECF7F3; --hero-muted:#8FB5AA; --glow-a:rgba(31,214,170,.22); --glow-b:rgba(255,170,64,.16);
+  --accent:#0FA383; --accent-ink:#FFFFFF; --accent-soft:#DDF4EC;
+  --in:#0E9F7E; --in-bg:#DAF4EA; --out:#D9790F; --out-bg:#FCEBD5; --danger:#C8352B; --danger-bg:#FCE4E1;
+  --shadow:0 1px 2px rgba(10,30,25,.06),0 12px 32px -12px rgba(10,30,25,.18);
+  --f-display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#08110F; --surface:#101C19; --sunk:#0C1714; --ink:#E6F1ED; --muted:#8FA59D; --line:#1F2F2A;
+  --hero:#061512; --hero-2:#0B2620; --hero-ink:#ECF7F3; --hero-muted:#7FA79A; --glow-a:rgba(31,214,170,.18); --glow-b:rgba(255,170,64,.10);
+  --accent:#2FD3AC; --accent-ink:#04211A; --accent-soft:#0F2E26;
+  --in:#36D3A8; --in-bg:#0F2C24; --out:#F5A447; --out-bg:#33240F; --danger:#F28A80; --danger-bg:#3A1714;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -16px rgba(0,0,0,.7); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#08110F; --surface:#101C19; --sunk:#0C1714; --ink:#E6F1ED; --muted:#8FA59D; --line:#1F2F2A;
+  --hero:#061512; --hero-2:#0B2620; --hero-ink:#ECF7F3; --hero-muted:#7FA79A; --glow-a:rgba(31,214,170,.18); --glow-b:rgba(255,170,64,.10);
+  --accent:#2FD3AC; --accent-ink:#04211A; --accent-soft:#0F2E26;
+  --in:#36D3A8; --in-bg:#0F2C24; --out:#F5A447; --out-bg:#33240F; --danger:#F28A80; --danger-bg:#3A1714;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -16px rgba(0,0,0,.7); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--hero)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{text-wrap:balance;margin:0;font-family:var(--f-display);letter-spacing:-.02em}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:.92em}
+.muted{color:var(--muted)}
+
+/* ===== hero band ===== */
+.hero{background:
+   radial-gradient(600px 260px at 12% 0%, var(--glow-a), transparent 70%),
+   radial-gradient(520px 240px at 92% 30%, var(--glow-b), transparent 70%),
+   linear-gradient(180deg,var(--hero),var(--hero-2));
+  color:var(--hero-ink);position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+  background-size:28px 28px;mask-image:linear-gradient(180deg,#000,transparent 85%);-webkit-mask-image:linear-gradient(180deg,#000,transparent 85%)}
+.hero > *{position:relative;z-index:1}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-block:16px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-mark{width:40px;height:40px;border-radius:12px;flex:none;position:relative;
+  background:linear-gradient(140deg,var(--accent),#0B7A63);box-shadow:0 6px 18px -6px var(--glow-a),inset 0 1px 0 rgba(255,255,255,.25)}
+.brand-mark::before{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;transform:translate(-50%,-50%)}
+.brand-mark::after{content:"";position:absolute;left:50%;top:13px;width:2.5px;height:8px;background:#fff;border-radius:2px;transform:translateX(-50%);transform-origin:50% 100%}
+.brand-name{font-family:var(--f-display);font-weight:700;font-size:19px;line-height:1.1;letter-spacing:-.01em}
+.brand-sub{color:var(--hero-muted);font-size:12.5px}
+.tabs{display:flex;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px;backdrop-filter:blur(8px)}
+.tab{border:0;background:none;padding:8px 18px;border-radius:999px;cursor:pointer;font-weight:600;font-size:14px;color:var(--hero-muted);transition:background .2s,color .2s}
+.tab:hover{color:var(--hero-ink)}
+.tab.on{background:var(--hero-ink);color:var(--hero)}
+
+.hero-clock{padding-block:18px 96px;display:grid;justify-items:center;text-align:center;gap:6px}
+.eyebrow{text-transform:uppercase;letter-spacing:.18em;font-size:11.5px;font-weight:700;color:var(--hero-muted);display:inline-flex;align-items:center;gap:8px}
+.live{width:8px;height:8px;border-radius:50%;background:#33E0B4;box-shadow:0 0 0 0 rgba(51,224,180,.6);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(51,224,180,.55)}70%{box-shadow:0 0 0 10px rgba(51,224,180,0)}100%{box-shadow:0 0 0 0 rgba(51,224,180,0)}}
+.clock-row{display:flex;align-items:flex-start;gap:12px}
+.clock{font-family:var(--f-mono);font-weight:700;font-size:clamp(68px,13vw,136px);line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums;
+  background:linear-gradient(180deg,#FFFFFF,#BFEFE2);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(51,224,180,.15)}
+.clock-side{display:grid;gap:2px;padding-top:.6em;text-align:left}
+.clock-side .sec{font-family:var(--f-mono);font-weight:600;font-size:clamp(20px,3vw,30px);color:#5FE6C1;font-variant-numeric:tabular-nums;line-height:1}
+.clock-side .ampm{font-family:var(--f-mono);font-size:13px;color:var(--hero-muted);letter-spacing:.06em}
+.sec-bar{width:min(340px,70vw);height:3px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
+.sec-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#33E0B4,#FFB55A);transform-origin:left;transform:scaleX(0);transition:transform .9s linear}
+.date{font-size:16px;font-weight:500;color:var(--hero-muted);text-transform:capitalize;margin-top:4px}
+.hero-admin{padding-block:8px 74px}
+.hero-title{font-size:clamp(28px,4vw,40px);font-weight:800;margin-top:6px}
+
+.banner{background:var(--out-bg);border-bottom:1px solid var(--line)}
+.banner > div{padding-block:10px;font-size:14px}
+
+/* ===== kiosk ===== */
+.kiosk{max-width:680px;margin-top:-64px;padding-block:0 48px;position:relative;z-index:2}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;min-width:0;box-shadow:var(--shadow)}
+.form-card{padding:26px}
+.step{display:grid;gap:12px;margin-bottom:22px}
+.lbl{font-weight:700;font-size:15px;display:flex;gap:10px;align-items:center;font-family:var(--f-display);letter-spacing:-.01em}
+.lbl .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:8px;background:var(--accent-soft);color:var(--accent);font-family:var(--f-mono);font-size:11px;font-weight:700}
+.lbl.small{font-weight:600;font-size:13.5px;font-family:var(--f-body)}
+.lbl .opt{font-weight:400;color:var(--muted);font-size:12.5px;font-family:var(--f-body)}
+.field{display:grid;gap:6px;min-width:0}
+.field > span{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+input[type=search],input[type=text],input[type=password],input[type=date],select,textarea{
+  width:100%;background:var(--sunk);border:1.5px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0;transition:border-color .15s,box-shadow .15s,background .15s}
+#lUsuario,#lClave{font-size:17px;padding:14px 16px}
+textarea{resize:vertical}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px var(--accent-soft)}
+.empty{padding:22px;border:1.5px dashed var(--line);border-radius:14px;color:var(--muted);font-size:14px;background:var(--sunk);text-align:center}
+
+.person{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px;border-radius:16px;flex-wrap:wrap;
+  background:linear-gradient(135deg,var(--accent-soft),var(--sunk));border:1px solid var(--line)}
+.who{display:flex;gap:14px;align-items:center;min-width:0}
+.avatar{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;flex:none;font-family:var(--f-display);font-weight:800;font-size:20px;color:#fff;
+  background:linear-gradient(140deg,var(--accent),#0B6E59);box-shadow:0 8px 18px -8px var(--accent)}
+.who-t{min-width:0}
+.person .nm{font-family:var(--f-display);font-size:22px;font-weight:800;line-height:1.15;overflow-wrap:anywhere;letter-spacing:-.02em}
+.person .meta{font-size:13px;color:var(--muted)}
+.person .last{font-size:13px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.status.in{background:var(--in-bg);color:var(--in);border-color:transparent}
+.status.out{background:var(--out-bg);color:var(--out);border-color:transparent}
+details summary{list-style:none} details summary::-webkit-details-marker{display:none}
+details summary::after{content:" ▾"} details[open] summary::after{content:" ▴"}
+
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.seg-b{border:2px solid var(--line);background:var(--surface);border-radius:16px;padding:18px 14px;cursor:pointer;display:grid;justify-items:center;gap:8px;
+  font-family:var(--f-display);font-size:21px;font-weight:800;letter-spacing:-.01em;color:var(--muted);transition:transform .15s,border-color .15s,background .15s,box-shadow .15s}
+.seg-b:hover{transform:translateY(-2px)}
+.seg-b .ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--sunk);transition:background .15s,color .15s}
+.seg-b svg{width:22px;height:22px}
+.seg-b.in.on{border-color:var(--in);background:var(--in-bg);color:var(--in);box-shadow:0 10px 24px -14px var(--in)}
+.seg-b.in.on .ico{background:var(--in);color:var(--surface)}
+.seg-b.out.on{border-color:var(--out);background:var(--out-bg);color:var(--out);box-shadow:0 10px 24px -14px var(--out)}
+.seg-b.out.on .ico{background:var(--out);color:var(--surface)}
+.arrow{display:none}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 15px;cursor:pointer;font-size:14px;font-weight:500;transition:all .15s}
+.chip:hover{border-color:var(--out)}
+.chip.on{background:var(--out);border-color:var(--out);color:var(--surface);font-weight:700}
+
+.note{font-size:13.5px;padding:12px 14px;border-radius:12px;background:var(--out-bg);border-left:3px solid var(--out)}
+.err{font-size:14px;padding:12px 14px;border-radius:12px;background:var(--danger-bg);color:var(--danger);font-weight:600}
+
+.pad-wrap{position:relative;border:1.5px dashed var(--line);border-radius:16px;background:var(--sunk);overflow:hidden;transition:border-color .15s}
+.pad-wrap:hover{border-color:var(--accent)}
+#firma{display:block;width:100%;aspect-ratio:3/1;touch-action:none;cursor:crosshair;position:relative;z-index:1}
+.pad-line{position:absolute;left:24px;right:24px;bottom:24%;border-top:1.5px solid var(--line);font-size:10.5px;color:var(--muted);padding-top:4px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+.pad-line::before{content:"✕";position:absolute;left:0;top:-22px;font-size:14px;color:var(--muted)}
+.pad-tools{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.link{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:700;padding:4px 0;font-size:14px}
+
+.btn{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer;font-size:14px;transition:all .15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:0 8px 20px -10px var(--accent)}
+.btn.primary:hover{filter:brightness(1.07);color:var(--accent-ink);transform:translateY(-1px)}
+.btn.big{width:100%;padding:17px;font-size:17px;border-radius:14px;font-family:var(--f-display);letter-spacing:-.01em}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+.ok{text-align:center;padding:32px 10px 20px;display:grid;gap:10px;justify-items:center}
+.ok-badge{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;font-size:40px;font-weight:800;animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+.ok-badge.in{background:var(--in);color:var(--surface);box-shadow:0 0 0 10px var(--in-bg),0 18px 40px -12px var(--in)}
+.ok-badge.out{background:var(--out);color:var(--surface);box-shadow:0 0 0 10px var(--out-bg),0 18px 40px -12px var(--out)}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.ok h2{font-size:32px;font-weight:800;margin-top:14px}
+.ok .big-time{font-family:var(--f-mono);font-size:52px;font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+
+/* ===== admin ===== */
+.admin{margin-top:-52px;padding-block:0 56px;position:relative;z-index:2}
+.gate{max-width:440px;margin:0 auto;padding:30px;display:grid;gap:14px}
+.gate h2{font-size:28px;font-weight:800}
+.gate form{display:grid;gap:12px}
+.admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:8px;box-shadow:var(--shadow)}
+.subtabs{display:flex;gap:4px;flex-wrap:wrap}
+.sub{border:0;background:none;padding:9px 16px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:10px;transition:all .15s}
+.sub:hover{color:var(--ink);background:var(--sunk)}
+.sub.on{color:var(--accent-ink);background:var(--accent)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end;margin-bottom:16px;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden}
+.stat::after{content:"";position:absolute;right:-18px;top:-18px;width:70px;height:70px;border-radius:50%;background:var(--sunk)}
+.stat:nth-child(2)::after{background:var(--in-bg)} .stat:nth-child(3)::after,.stat:nth-child(4)::after{background:var(--out-bg)}
+.stat .k{font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.09em;position:relative;z-index:1}
+.stat .v{font-family:var(--f-display);font-size:38px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;position:relative;z-index:1}
+.inside{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:14px;display:grid;gap:10px}
+.inside-list{display:flex;flex-wrap:wrap;gap:8px}
+.tag{display:inline-flex;gap:8px;align-items:center;font-size:13px;background:var(--in-bg);border-radius:999px;padding:5px 12px 5px 6px}
+.tag::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--in);margin-left:4px;box-shadow:0 0 0 3px var(--surface)}
+.table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--sunk);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr{cursor:pointer;transition:background .12s}
+tbody tr:hover{background:var(--sunk)}
+td small{display:block}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.pill.in{background:var(--in-bg);color:var(--in)} .pill.out{background:var(--out-bg);color:var(--out)}
+.pill.off{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.sig{height:36px;width:auto;border-radius:6px;background:#FFFFFF;border:1px solid var(--line);display:block}
+.just b{font-weight:700}
+.just small{color:var(--muted);max-width:36ch;overflow-wrap:anywhere}
+.foot-note{font-size:13px;color:var(--muted);margin-top:12px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.7fr);gap:18px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;display:grid;gap:14px;min-width:0;box-shadow:var(--shadow)}
+.panel h3{font-size:21px;font-weight:800}
+.ok-msg{font-size:14px;color:var(--in);font-weight:700}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#resTotales .table-wrap{margin-bottom:6px}
+#resDiaTitulo{font-family:var(--f-display)!important}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(4,14,11,.6);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;z-index:50}
+.modal-box{background:var(--surface);border-radius:22px;max-width:560px;width:100%;padding:26px;display:grid;gap:16px;max-height:90vh;overflow:auto;border:1px solid var(--line);box-shadow:var(--shadow);animation:pop .25s ease-out}
+.modal-box h3{font-size:24px;font-weight:800}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:14px}
+.dl dt{color:var(--muted);font-weight:600} .dl dd{margin:0;overflow-wrap:anywhere}
+.sig-big{width:100%;background:#FFFFFF;border:1px solid var(--line);border-radius:12px;display:block}
+
+@media (max-width:720px){
+  .hero-clock{padding-block:8px 84px}
+  .form-card{padding:18px}
+  .two{grid-template-columns:1fr}
+  .seg-b{font-size:18px;padding:14px 10px}
+  .admin-head{border-radius:14px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Firebase: caja de usuario en la franja */
+.user-box{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 4px 4px 14px}
+.user-box span{font-size:13.5px;font-weight:600;color:var(--hero-ink);max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi-clave{border-top:1px solid var(--line);padding-top:12px}
+.mi-clave form{display:grid;gap:10px;margin-top:10px}
+</style>
+<style>
+html{color-scheme:light}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font-size:15px}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="banner" class="banner" hidden><div class="wrap" id="bannerText"></div></div>
+<header class="hero">
+  <div class="wrap top-in">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div><div class="brand-name" id="empresaNombre">Control de personal</div><div class="brand-sub">Registro de ingreso y salida</div></div>
+    </div>
+    <div class="user-box" id="userBox" hidden>
+      <span id="userName"></span>
+      <button class="tab on" id="logout" type="button">Cerrar sesión</button>
+    </div>
+  </div>
+  <div class="wrap hero-clock" id="heroKiosk">
+    <div class="eyebrow"><span class="live" aria-hidden="true"></span>Hora del registro</div>
+    <div class="clock-row">
+      <div class="clock" id="clock">--:--</div>
+      <div class="clock-side"><span class="sec" id="clockSec">--</span><span class="ampm" id="clockAmpm"></span></div>
+    </div>
+    <div class="sec-bar" aria-hidden="true"><i id="secBar"></i></div>
+    <div class="date" id="date"></div>
+  </div>
+  <div class="wrap hero-admin" id="heroAdmin" hidden>
+    <div class="eyebrow">Panel del administrador</div>
+    <h1 class="hero-title">Asistencia del personal</h1>
+  </div>
+</header>
+
+<main id="vKiosk" class="wrap kiosk">
+  <section class="card form-card">
+    <div id="stepForm">
+      <form class="step" id="loginForm" autocomplete="off">
+        <div class="lbl"><span class="n">01</span>Inicie sesión con su usuario</div>
+        <label class="field"><span>Usuario</span><input id="lUsuario" type="text" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="Ej. mlopez"></label>
+        <label class="field"><span>Contraseña</span><input id="lClave" type="password" autocomplete="off"></label>
+        <div id="loginMsg" class="err" hidden></div>
+        <button class="btn primary big" id="loginBtn" type="submit">Entrar</button>
+        <p class="muted" style="font-size:13px;margin:0">¿No tiene usuario u olvidó la contraseña? Pídala al administrador. El administrador entra con su correo.</p>
+      </form>
+      <div class="step" id="seleccion" hidden>
+        <div class="person">
+          <div class="who">
+            <div class="avatar" id="selAvatar" aria-hidden="true"></div>
+            <div class="who-t">
+              <div class="meta">Hola,</div>
+              <div class="nm" id="selNombre"></div>
+              <div class="meta"><span class="num" id="selDoc"></span> · <span id="selCargo"></span></div>
+              <div class="last"><span class="status" id="selEstado">Consultando…</span><span id="selUltima"></span></div>
+            </div>
+          </div>
+          <button class="btn" id="cambiar" type="button">Cerrar sesión</button>
+        </div>
+        <details id="historial">
+          <summary class="link" style="cursor:pointer">Mis últimos registros</summary>
+          <div id="histList" style="margin-top:8px;display:grid;gap:6px"></div>
+        </details>
+        <details class="mi-clave" id="miClave">
+          <summary class="link" style="cursor:pointer">Cambiar mi contraseña</summary>
+          <form id="formMiClave" autocomplete="off">
+            <label class="field"><span>Contraseña actual</span><input type="password" id="mcActual" autocomplete="current-password"></label>
+            <label class="field"><span>Contraseña nueva (mínimo 6 caracteres)</span><input type="password" id="mcNueva" autocomplete="new-password"></label>
+            <label class="field"><span>Repita la contraseña nueva</span><input type="password" id="mcNueva2" autocomplete="new-password"></label>
+            <div id="mcErr" class="err" hidden></div>
+            <div id="mcOk" class="ok-msg" hidden></div>
+            <button class="btn" type="submit">Guardar contraseña</button>
+          </form>
+        </details>
+      </div>
+
+      <div id="pasoTipo" hidden>
+        <div class="step">
+          <div class="lbl"><span class="n">02</span>Tipo de registro</div>
+          <div class="seg">
+            <button id="tIngreso" class="seg-b in" type="button"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 16l4-4-4-4"/><path d="M13 12H3"/></svg></span>Ingreso</button>
+            <button id="tSalida" class="seg-b out" type="button"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M16 16l4-4-4-4"/><path d="M20 12H10"/></svg></span>Salida</button>
+          </div>
+          <div id="aviso" class="note" hidden></div>
+        </div>
+
+        <div class="step" id="bloqueSalida" hidden>
+          <div class="lbl"><span class="n">03</span>Justificación de la salida</div>
+          <div class="chips" id="motivos"></div>
+          <label class="lbl small" for="detalle">Detalle <span class="opt" id="detReq">(obligatorio)</span></label>
+          <textarea id="detalle" rows="2" maxlength="300" placeholder="Explique brevemente el motivo y, si aplica, la hora estimada de regreso"></textarea>
+        </div>
+
+        <div class="step">
+          <div class="lbl"><span class="n" id="numFirma">03</span>Firma</div>
+          <div class="pad-wrap"><canvas id="firma" aria-label="Recuadro para firmar"></canvas><span class="pad-line">Firme sobre la línea</span></div>
+          <div class="pad-tools"><span class="muted" style="font-size:13px">Use el dedo, el lápiz o el mouse.</span><button id="limpiar" class="link" type="button">Borrar firma</button></div>
+        </div>
+
+        <div id="error" class="err" hidden></div>
+        <button id="confirmar" class="btn primary big" type="button">Registrar ingreso</button>
+      </div>
+    </div>
+
+    <div id="stepOk" class="ok" hidden>
+      <div class="ok-badge" id="okBadge">✓</div>
+      <h2 id="okTitulo">Ingreso registrado</h2>
+      <div class="big-time" id="okHora"></div>
+      <div id="okNombre" style="font-weight:600"></div>
+      <div id="okExtra" class="muted"></div>
+      <button class="btn primary" id="nuevo" type="button">Cerrar sesión <span id="okCuenta" class="num"></span></button>
+    </div>
+  </section>
+</main>
+
+<main id="vAdmin" class="wrap admin" hidden>
+  <div id="panel">
+    <div class="admin-head">
+      <div class="subtabs">
+        <button class="sub on" data-sub="Reg" type="button">Registros</button>
+        <button class="sub" data-sub="Res" type="button">Resumen diario</button>
+        <button class="sub" data-sub="Per" type="button">Personal</button>
+        <button class="sub" data-sub="Aj" type="button">Ajustes</button>
+      </div>
+    </div>
+
+    <section id="subReg">
+      <div class="filters">
+        <label class="field"><span>Desde</span><input type="date" id="fDesde"></label>
+        <label class="field"><span>Hasta</span><input type="date" id="fHasta"></label>
+        <label class="field"><span>Persona</span><select id="fEmp"><option value="">Todo el personal</option></select></label>
+        <label class="field"><span>Tipo</span><select id="fTipo"><option value="">Ingresos y salidas</option><option value="ingreso">Solo ingresos</option><option value="salida">Solo salidas</option><option value="justificada">Salidas antes del fin de jornada</option></select></label>
+        <button class="btn" id="exportar" type="button">Exportar CSV</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Registros</div><div class="v" id="sTotal">0</div></div>
+        <div class="stat"><div class="k">Ingresos</div><div class="v" id="sIn">0</div></div>
+        <div class="stat"><div class="k">Salidas</div><div class="v" id="sOut">0</div></div>
+        <div class="stat"><div class="k">Salidas en jornada</div><div class="v" id="sJust">0</div></div>
+      </div>
+      <div class="inside" id="inside" hidden>
+        <div class="lbl" style="font-size:13px">Dentro de las instalaciones ahora <span class="opt" id="insideN"></span></div>
+        <div class="inside-list" id="insideList"></div>
+      </div>
+      <div id="regMsg" class="empty" hidden></div>
+      <div class="table-wrap" id="tablaWrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Hora</th><th>Persona</th><th>Tipo</th><th>Justificación</th><th>Permanencia</th><th>Firma</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <p class="foot-note" id="regFoot"></p>
+    </section>
+
+    <section id="subRes" hidden>
+      <div class="filters">
+        <label class="field"><span>Desde</span><input type="date" id="rDesde"></label>
+        <label class="field"><span>Hasta</span><input type="date" id="rHasta"></label>
+        <label class="field"><span>Persona</span><select id="rEmp"><option value="">Todo el personal</option></select></label>
+        <button class="btn" id="rExportar" type="button">Exportar CSV</button>
+      </div>
+      <div id="resMsg" class="empty" hidden></div>
+      <div id="resTotales"></div>
+      <h3 id="resDiaTitulo" style="font-family:var(--f-display);font-size:22px;font-weight:600;margin:20px 0 10px" hidden>Detalle por día</h3>
+      <div class="table-wrap" id="resWrap" hidden>
+        <table>
+          <thead><tr><th>Fecha</th><th>Persona</th><th>Primer ingreso</th><th>Última salida</th><th>Salidas en jornada</th><th>Tiempo fuera</th><th>Horas trabajadas</th></tr></thead>
+          <tbody id="resBody"></tbody>
+        </table>
+      </div>
+      <p class="foot-note">Horas trabajadas = suma de los tramos entre cada ingreso y la salida siguiente. El tiempo fuera por almuerzo o diligencias no se cuenta. Un ingreso sin salida en un día anterior se marca como «Sin salida» y no suma horas.</p>
+    </section>
+
+    <section id="subPer" hidden>
+      <div class="two">
+        <form class="panel" id="formEmp">
+          <h3>Agregar persona</h3>
+          <label class="field"><span>Nombre completo</span><input type="text" id="eNombre" maxlength="80" required></label>
+          <label class="field"><span>Número de documento</span><input type="text" id="eDoc" inputmode="numeric" maxlength="15" required></label>
+          <label class="field"><span>Cargo o área</span><input type="text" id="eCargo" maxlength="60" placeholder="Ej. Operario de trilla"></label>
+          <label class="field"><span>Usuario</span><input type="text" id="eUsuario" maxlength="30" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="Ej. mlopez" required></label>
+          <label class="field"><span>Contraseña inicial (mínimo 6 caracteres)</span><input type="text" id="eClave" maxlength="40" autocomplete="off" required></label>
+          <p class="muted" style="font-size:12.5px;margin:0">Entréguele el usuario y la contraseña a la persona. Podrá restablecerla aquí si la olvida.</p>
+          <div id="eErr" class="err" hidden></div>
+          <div id="eOk" class="ok-msg" hidden></div>
+          <button class="btn primary" type="submit">Agregar</button>
+        </form>
+        <div class="panel">
+          <h3>Personal <span class="muted num" id="perCount" style="font-family:var(--f-mono);font-size:14px"></span></h3>
+          <div id="perList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="subAj" hidden>
+      <div class="two">
+        <form class="panel" id="formEmpresa">
+          <h3>Nombre en el encabezado</h3>
+          <label class="field"><span>Empresa o sede</span><input type="text" id="aEmpresa" maxlength="60" placeholder="Ej. Trilladora – Sede Garzón"></label>
+          <div id="aEmpOk" class="ok-msg" hidden></div>
+          <button class="btn primary" type="submit">Guardar</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="mTitulo">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+      <h3 id="mTitulo"></h3><button class="btn" id="mCerrar" type="button">Cerrar</button>
+    </div>
+    <dl class="dl" id="mDatos"></dl>
+    <img class="sig-big" id="mFirma" alt="Firma del registro">
+    <div id="mBorrar" class="row-actions"><button class="btn" id="mDel" type="button">Eliminar registro</button></div>
+    <div id="mConfirm" class="note" hidden>
+      <div style="margin-bottom:8px">¿Eliminar este registro definitivamente? No se puede deshacer.</div>
+      <div class="row-actions"><button class="btn danger" id="mDelSi" type="button">Sí, eliminar</button><button class="btn" id="mDelNo" type="button">Cancelar</button></div>
+    </div>
+    <div id="mErr" class="err" hidden></div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
