@@ -1,8 +1,11 @@
 rules_version = '2';
 
 // Reglas de seguridad de Firestore — Control de Ingreso y Salida
-// IMPORTANTE: cambie el correo del administrador en la función esAdmin()
-// (debe coincidir con ADMIN_EMAILS en public/config.js).
+// Roles: administrador (por correo) y celador (ficha en /celadores).
+// Los trabajadores NO tienen cuenta: se identifican con el código QR que
+// escanea el celador.
+// IMPORTANTE: el correo del administrador debe coincidir con ADMIN_EMAILS
+// en public/config.js.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -26,20 +29,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/celadores/$(request.auth.uid)).data.activo == true;
     }
 
-    function rutaEmpleado() {
-      return /databases/$(database)/documents/empleados/$(request.auth.uid);
-    }
-
     // Nombre de la empresa: visible en la pantalla de inicio, solo el admin lo cambia.
     match /ajustes/{id} {
       allow read: if true;
       allow write: if esAdmin();
     }
 
-    // Ficha de cada empleado (el id del documento es su uid de Authentication).
-    match /empleados/{uid} {
-      allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
-      // El celador solo puede consultar una ficha concreta (al escanear el QR), no listar.
+    // Ficha de cada trabajador (incluye el código secreto de su QR).
+    // El administrador lo gestiona; el celador solo consulta una ficha concreta al escanear.
+    match /empleados/{id} {
+      allow read: if esAdmin();
       allow get: if esCelador();
       allow write: if esAdmin();
     }
@@ -50,46 +49,24 @@ service cloud.firestore {
       allow write: if esAdmin();
     }
 
-    // Permisos de salida: el empleado los solicita, el administrador los aprueba
-    // y el celador los marca como usados al registrar la salida.
+    // Permisos de salida: los registra el administrador; el celador los marca
+    // como usados al confirmar la salida.
     match /permisos/{id} {
-      allow read: if esAdmin()
-        || esCelador()
-        || (autenticado() && resource.data.empleadoId == request.auth.uid);
-
-      allow create: if autenticado()
-        && exists(rutaEmpleado())
-        && get(rutaEmpleado()).data.activo == true
-        && request.resource.data.keys().hasOnly(
-             ['empleadoId','nombre','cedula','motivo','detalle','estado','creado'])
-        && request.resource.data.empleadoId == request.auth.uid
-        && request.resource.data.nombre == get(rutaEmpleado()).data.nombre
-        && request.resource.data.cedula == string(get(rutaEmpleado()).data.cedula)
-        && request.resource.data.estado == 'pendiente'
-        && request.resource.data.creado == request.time
-        && request.resource.data.motivo is string
-        && request.resource.data.motivo.size() > 0
-        && request.resource.data.detalle is string
-        && request.resource.data.detalle.size() < 300;
-
+      allow read: if esAdmin() || esCelador();
+      allow create: if esAdmin();
       allow update: if esAdmin()
         || (esCelador()
             && resource.data.estado == 'aprobado'
             && request.resource.data.estado == 'usado'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado','usadoEn'])
             && request.resource.data.usadoEn == request.time);
-
       allow delete: if esAdmin();
     }
 
-    // Marcas de ingreso y salida.
+    // Marcas de ingreso y salida: solo las crea el celador al escanear el QR.
     match /marcas/{id} {
-      // El admin lee todo; cada empleado solo sus propias marcas.
-      allow read: if esAdmin()
-        || esCelador()
-        || (autenticado() && resource.data.empleadoId == request.auth.uid);
+      allow read: if esAdmin() || esCelador();
 
-      // Solo el celador registra ingresos y salidas, al escanear el QR del empleado (sin firma).
       allow create: if esCelador()
         && exists(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId))
         && get(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId)).data.activo == true

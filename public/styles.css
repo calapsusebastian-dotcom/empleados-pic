@@ -742,3 +742,15 @@ body:not(.listo)::after{content:"";position:fixed;left:50%;top:60%;width:28px;he
 .pw-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);min-height:30px!important;border:0;background:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;padding:4px 10px;border-radius:6px}
 .pw-btn:hover{background:var(--accent-soft)}
 ::selection{background:var(--accent-soft)}
+
+/* ===== Carnets con QR para entregar al trabajador ===== */
+.hoja-qr{display:none}
+@media print{
+  body.imprimiendo-todos > *:not(#hojaQr){display:none!important}
+  body.imprimiendo-todos #hojaQr{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;padding:6mm;background:#fff}
+  .carnet{break-inside:avoid;border:1px solid #888;border-radius:6px;padding:8px 8px 10px;text-align:center;display:grid;gap:3px;justify-items:center;color:#000;font-family:system-ui,sans-serif}
+  .carnet small{font-size:10px;color:#555;letter-spacing:.08em;text-transform:uppercase}
+  .carnet img{width:100%;max-width:44mm;height:auto}
+  .carnet b{font-size:13px;line-height:1.2}
+  .carnet span{font-size:11px;color:#333}
+}

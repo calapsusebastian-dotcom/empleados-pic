@@ -136,3 +136,11 @@ El QR es fijo por empleado. Si alguien lo pierde o lo comparte, genere uno nuevo
 
 ### Cambio: ya no hay firma ni marcado por el empleado
 Los ingresos y salidas los registra **solo el celador**. Al escanear el QR ve la ficha del empleado y elige *Registrar ingreso* o *Registrar salida*. La salida con permiso aprobado hoy queda «autorizada» y el permiso se marca como usado; sin permiso, el sistema avisa y el celador puede registrar una salida de fin de jornada. Vuelva a publicar `firestore.rules` para que los empleados dejen de poder crear marcas.
+
+## Cambio: los trabajadores ya no tienen usuario ni contraseña
+
+- **Alta:** panel → *Personal* → *Agregar persona* (nombre, documento, cargo). Se genera su QR y se abre para imprimirlo. *Imprimir carnets* saca una hoja con el QR de todos.
+- **Permisos:** los registra el administrador en la pestaña *Permisos* (queda aprobado al instante, vale solo ese día y se usa una vez).
+- **Portería:** el celador es el único que registra ingresos y salidas, escaneando el QR.
+- **Cuentas:** solo existen el administrador (correo) y los celadores (usuario). Las cuentas de empleados anteriores ya no sirven para entrar; se pueden borrar en Firebase → Authentication.
+- **Reglas:** vuelva a publicar `firestore.rules` (los empleados ya no leen ni escriben nada).

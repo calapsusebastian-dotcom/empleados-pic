@@ -50,59 +50,13 @@
   <section class="card form-card">
     <div id="stepForm">
       <form class="step" id="loginForm" autocomplete="off">
-        <div class="lbl"><span class="n">01</span>Inicie sesión con su usuario</div>
-        <label class="field"><span>Usuario</span><input id="lUsuario" type="text" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="Ej. mlopez"></label>
+        <div class="lbl"><span class="n">01</span>Acceso del administrador y la portería</div>
+        <label class="field"><span>Usuario o correo</span><input id="lUsuario" type="text" autocapitalize="none" autocomplete="username" spellcheck="false" placeholder="Usuario del celador o correo del administrador"></label>
         <label class="field"><span>Contraseña</span><span class="pw"><input id="lClave" type="password" autocomplete="off"><button type="button" id="lVer" class="pw-btn" aria-label="Mostrar contraseña">Mostrar</button></span></label>
         <div id="loginMsg" class="err" role="alert" hidden></div>
         <button class="btn primary big" id="loginBtn" type="submit">Entrar</button>
-        <p class="muted" style="font-size:13px;margin:0">¿No tiene usuario u olvidó la contraseña? Pídala al administrador. El administrador entra con su correo.</p>
+        <p class="muted" style="font-size:13px;margin:0">El administrador entra con su correo y el celador con su usuario. Los trabajadores no necesitan cuenta: usan el código QR que se les entrega.</p>
       </form>
-      <div class="step" id="seleccion" hidden>
-        <div class="person">
-          <div class="who">
-            <div class="avatar" id="selAvatar" aria-hidden="true"></div>
-            <div class="who-t">
-              <div class="meta">Hola,</div>
-              <div class="nm" id="selNombre"></div>
-              <div class="meta"><span class="num" id="selDoc"></span> · <span id="selCargo"></span></div>
-              <div class="last"><span class="status" id="selEstado">Consultando…</span><span id="selUltima"></span></div>
-            </div>
-          </div>
-          <button class="btn" id="cambiar" type="button">Cerrar sesión</button>
-        </div>
-        <details id="historial">
-          <summary class="link" style="cursor:pointer">Mis últimos registros</summary>
-          <div id="histList" style="margin-top:8px;display:grid;gap:6px"></div>
-        </details>
-        <details class="mi-clave" id="miQr" open>
-          <summary class="link" style="cursor:pointer">Mi código QR</summary>
-          <div class="qr-box">
-            <img id="miQrImg" class="qr-img" alt="Mi código QR" hidden>
-            <p class="muted" id="miQrTxt" style="margin:0;text-align:center;font-size:12.5px"></p>
-          </div>
-        </details>
-        <details class="mi-clave" id="miPermiso">
-          <summary class="link" style="cursor:pointer">Permiso de salida <span id="permBadge" class="pill out" hidden></span></summary>
-          <form id="formPermiso" autocomplete="off">
-            <label class="field"><span>Motivo</span><select id="pMotivo"></select></label>
-            <label class="field"><span>Detalle</span><textarea id="pDetalle" rows="2" maxlength="250" placeholder="Explique el motivo y la hora estimada de regreso"></textarea></label>
-            <div id="pErr" class="err" role="alert" hidden></div>
-            <button class="btn primary" type="submit">Solicitar permiso</button>
-          </form>
-          <div id="permLista" class="perm-lista"></div>
-        </details>
-        <details class="mi-clave" id="miClave">
-          <summary class="link" style="cursor:pointer">Cambiar mi contraseña</summary>
-          <form id="formMiClave" autocomplete="off">
-            <label class="field"><span>Contraseña actual</span><input type="password" id="mcActual" autocomplete="current-password"></label>
-            <label class="field"><span>Contraseña nueva (mínimo 6 caracteres)</span><input type="password" id="mcNueva" autocomplete="new-password"></label>
-            <label class="field"><span>Repita la contraseña nueva</span><input type="password" id="mcNueva2" autocomplete="new-password"></label>
-            <div id="mcErr" class="err" role="alert" hidden></div>
-            <div id="mcOk" class="ok-msg" hidden></div>
-            <button class="btn" type="submit">Guardar contraseña</button>
-          </form>
-        </details>
-      </div>
 
     </div>
 </section>
@@ -200,11 +154,23 @@
     </section>
 
     <section id="subPerm" hidden>
-      <div class="panel">
-        <h3>Permisos de salida <span class="muted num" id="permCount" style="font-size:13px"></span></h3>
-        <div id="permMsg" class="empty" hidden></div>
-        <div id="permAdmin"></div>
-        <p class="foot-note">Cuando usted aprueba un permiso, el celador verá «Salida autorizada» al escanear el QR del empleado. El permiso vale solo el día en que se aprueba y se usa una vez.</p>
+      <div class="two">
+        <form class="panel" id="formPerm" autocomplete="off">
+          <h3>Registrar permiso</h3>
+          <label class="field"><span>Persona</span><select id="nEmp" required><option value="">Seleccione a la persona</option></select></label>
+          <label class="field"><span>Motivo</span><select id="nMotivo"></select></label>
+          <label class="field"><span>Detalle</span><textarea id="nDetalle" rows="3" maxlength="250" placeholder="Motivo del permiso y hora estimada de regreso"></textarea></label>
+          <div id="nErr" class="err" role="alert" hidden></div>
+          <div id="nOk" class="ok-msg" hidden></div>
+          <button class="btn primary" type="submit">Registrar permiso</button>
+          <p class="muted" style="font-size:12.5px;margin:0">Queda aprobado de inmediato. El celador lo ve al escanear el QR con «Escanear salida con permiso».</p>
+        </form>
+        <div class="panel">
+          <h3>Permisos de salida <span class="muted num" id="permCount" style="font-size:13px"></span></h3>
+          <div id="permMsg" class="empty" hidden></div>
+          <div id="permAdmin"></div>
+          <p class="foot-note">Cada permiso vale solo el día en que se registra y se usa una vez, cuando el celador confirma la salida. Puede anularlo antes de que se use.</p>
+        </div>
       </div>
     </section>
 
@@ -215,9 +181,7 @@
           <label class="field"><span>Nombre completo</span><input type="text" id="eNombre" maxlength="80" required></label>
           <label class="field"><span>Número de documento</span><input type="text" id="eDoc" inputmode="numeric" maxlength="15" required></label>
           <label class="field"><span>Cargo o área</span><input type="text" id="eCargo" maxlength="60" placeholder="Ej. Operario de trilla"></label>
-          <label class="field"><span>Usuario</span><input type="text" id="eUsuario" maxlength="30" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="Ej. mlopez" required></label>
-          <label class="field"><span>Contraseña inicial (mínimo 6 caracteres)</span><input type="text" id="eClave" maxlength="40" autocomplete="off" required></label>
-          <p class="muted" style="font-size:12.5px;margin:0">Entréguele el usuario y la contraseña a la persona. Podrá restablecerla aquí si la olvida.</p>
+          <p class="muted" style="font-size:12.5px;margin:0">Al agregar a la persona se genera su código QR. Imprímalo y entréguelo al trabajador: lo mostrará al celador al entrar y al salir.</p>
           <div id="eErr" class="err" role="alert" hidden></div>
           <div id="eOk" class="ok-msg" hidden></div>
           <button class="btn primary" type="submit">Agregar</button>
@@ -254,6 +218,8 @@
     </section>
   </div>
 </main>
+
+<div id="hojaQr" class="hoja-qr" aria-hidden="true"></div>
 
 <div id="qModal" class="modal" hidden>
   <div class="modal-box qr-modal" role="dialog" aria-modal="true" aria-labelledby="qTitulo">

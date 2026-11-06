@@ -1,24 +1,23 @@
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword,
-  setPersistence, browserSessionPersistence, updatePassword, EmailAuthProvider, reauthenticateWithCredential
+  setPersistence, browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, query, where, orderBy, limit,
   getDocs, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
-import { firebaseConfig, ADMIN_EMAILS, DOMINIO_USUARIOS, REGION_FUNCIONES } from "./config.js";
+import { firebaseConfig, ADMIN_EMAILS, DOMINIO_USUARIOS } from "./config.js";
 
 const MOTIVOS = ["Fin de jornada","Almuerzo","Diligencia personal","Cita médica","Comisión de trabajo","Calamidad doméstica","Otro"];
 const SIN_DETALLE = new Set(["Fin de jornada","Almuerzo"]);
 const $ = s => document.querySelector(s);
 const st = {
-  rol:null, user:null, sel:null, ultima:null,
+  rol:null, user:null,
   empleados:[], empLoaded:false, ajustes:{},
   marcas:[], marcasLoaded:false, marcasSlow:false, marcasErr:null, modalId:null,
   unsubs:[], unsubMarcas:null,
-  permisos:[], misPermisos:[], celadores:[]
+  permisos:[], celadores:[]
 };
 const MOTIVOS_PERMISO = MOTIVOS.filter(m => m !== "Fin de jornada");
 const PREFIJO_QR = "PIC";
@@ -65,12 +64,11 @@ function errText(e){
 
 /* ---------- Firebase ---------- */
 const configLista = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("PEGUE");
-let app, auth, db, fns;
+let app, auth, db;
 if(configLista){
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-  try{ fns = getFunctions(app, REGION_FUNCIONES); }catch{}
   setPersistence(auth, browserSessionPersistence).catch(()=>{});
 }else{
   banner("Falta configurar Firebase: edite public/config.js con los datos de su proyecto y vuelva a desplegar.");
@@ -91,14 +89,14 @@ setInterval(tick,1000); tick();
 document.addEventListener("visibilitychange", tick);
 
 /* ---------- vistas ---------- */
-function vista(v){ // "login" | "empleado" | "celador" | "admin"
+function vista(v){ // "login" | "celador" | "admin"
   document.body.classList.add("listo");
   show($("#heroKiosk"), v!=="admin"); show($("#heroAdmin"), v==="admin");
-  show($("#vKiosk"), v==="login" || v==="empleado"); show($("#vAdmin"), v==="admin");
+  show($("#vKiosk"), v==="login"); show($("#vAdmin"), v==="admin");
   show($("#vGuard"), v==="celador");
   if(v!=="celador") detenerCamara();
   show($("#userBox"), v!=="login");
-  if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#stepForm"),true);
+  if(v==="login"){ show($("#loginForm"),true);
     if(matchMedia("(pointer:fine)").matches) $("#lUsuario").focus({preventScroll:true}); }
 }
 
@@ -137,157 +135,38 @@ $("#loginForm").addEventListener("submit", async ev=>{
   }finally{ btn.disabled = false; btn.textContent = "Entrar"; }
 });
 
-async function salir(){ clearTimeout(inactividad); if(auth) await signOut(auth); }
+async function salir(){ if(auth) await signOut(auth); }
 $("#logout").onclick = salir;
-$("#cambiar").onclick = salir;
 
 function limpiarSuscripciones(){
   st.unsubs.forEach(u=>{ try{u();}catch{} }); st.unsubs = [];
   if(st.unsubMarcas){ st.unsubMarcas(); st.unsubMarcas = null; }
   st.marcas = []; st.empleados = []; st.empLoaded = false;
-  st.permisos = []; st.misPermisos = []; st.celadores = [];
+  st.permisos = []; st.celadores = [];
 }
 
 if(auth) onAuthStateChanged(auth, async user=>{
   limpiarSuscripciones(); cerrarModal();
-  st.user = user; st.rol = null; st.sel = null;
+  st.user = user; st.rol = null;
   if(!user){ $("#userName").textContent = ""; vista("login"); return; }
   if(esAdminEmail(user.email)){
     st.rol = "admin"; $("#userName").textContent = user.email;
     vista("admin"); abrirPanel(); return;
   }
-  // empleado
+  // celador (los empleados no tienen cuenta: usan su código QR)
   try{
-    const s = await getDoc(doc(db,"empleados",user.uid));
-    if(!s.exists()){
-      const c = await getDoc(doc(db,"celadores",user.uid)).catch(()=>null);
-      if(c && c.exists()){
-        const cel = {id:c.id, ...c.data()};
-        if(cel.activo === false){ await signOut(auth); return loginMsg("Su usuario está desactivado. Hable con el administrador."); }
-        st.rol = "celador"; $("#userName").textContent = cel.nombre; st.guard = cel;
-        vista("celador"); iniciarPorteria(); return;
-      }
-      await signOut(auth); return loginMsg("Este usuario no está registrado. Hable con el administrador.");
-    }
-    const e = {id:s.id, ...s.data()};
-    if(e.activo === false){ await signOut(auth); return loginMsg("Su usuario está desactivado. Hable con el administrador."); }
-    st.rol = "empleado"; $("#userName").textContent = e.nombre;
-    vista("empleado"); seleccionar(e);
+    const c = await getDoc(doc(db,"celadores",user.uid));
+    if(!c.exists()){ await signOut(auth); return loginMsg("Este usuario no tiene acceso. Hable con el administrador."); }
+    const cel = {id:c.id, ...c.data()};
+    if(cel.activo === false){ await signOut(auth); return loginMsg("Su usuario está desactivado. Hable con el administrador."); }
+    st.rol = "celador"; $("#userName").textContent = cel.nombre; st.guard = cel;
+    vista("celador"); iniciarPorteria();
   }catch(err){ await signOut(auth); loginMsg(errText(err)); }
 });
 
-/* ---------- empleado: sesión ---------- */
-let inactividad = null;
-function vigilarInactividad(){
-  clearTimeout(inactividad);
-  if(st.rol==="empleado") inactividad = setTimeout(salir, 120000);
-}
-["pointerdown","keydown"].forEach(ev => document.addEventListener(ev, vigilarInactividad));
-
-async function seleccionar(e){
-  st.sel = e; st.ultima = null;
-  show($("#loginForm"),false); show($("#stepForm"),true);
-  $("#selNombre").textContent = e.nombre; $("#selDoc").textContent = "C.C. "+e.cedula; $("#selCargo").textContent = e.cargo || "Sin cargo";
-  $("#selUltima").textContent = "";
-  $("#selAvatar").textContent = e.nombre.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
-  const est = $("#selEstado"); est.className = "status"; est.textContent = "Consultando…";
-  $("#histList").replaceChildren(mk("span","muted","Cargando…")); $("#historial").open = false; $("#miClave").open = false;
-  show($("#seleccion"),true); vigilarInactividad();
-  prepararQrYPermisos(e);
-  let hist = [];
-  try{
-    // Sin orderBy para no requerir un índice compuesto: se ordena aquí.
-    const q = query(collection(db,"marcas"), where("empleadoId","==",e.id));
-    hist = (await getDocs(q)).docs.map(marcaDe).sort((x,y)=>y.ts-x.ts).slice(0,6);
-  }catch(err){
-    if(st.sel !== e) return;
-    $("#histList").replaceChildren(mk("span","muted",errText(err)));
-  }
-  if(st.sel !== e) return;
-  st.ultima = hist[0] || null;
-  const u = st.ultima;
-  const dentro = u && u.tipo==="ingreso" && (Date.now()-u.ts) < 20*3600e3;
-  est.className = "status " + (dentro ? "in" : "out");
-  est.textContent = dentro ? "Dentro" : "Fuera";
-  $("#selUltima").textContent = u ? `${u.tipo==="ingreso"?"Ingresó":"Salió"} ${fmtFecha(u.ts)} · ${fmtHora(u.ts)}` : "Aún no tiene registros";
-  const hl = $("#histList"); hl.replaceChildren();
-  if(!hist.length) hl.append(mk("span","muted","Sin registros todavía."));
-  hist.forEach(m=>{
-    const row = mk("div"); row.style.cssText = "display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px";
-    row.append(mk("span","pill "+(m.tipo==="ingreso"?"in":"out"), m.tipo==="ingreso"?"Ingreso":"Salida"), mk("span","num",`${fmtFecha(m.ts)} · ${fmtHora(m.ts)}`));
-    if(m.tipo==="salida" && m.motivo) row.append(mk("span","muted",m.motivo));
-    hl.append(row);
-  });
-}
-
-/* ---------- empleado: mi código QR y permisos de salida ---------- */
 const ESTADO_PERMISO = {
-  pendiente:["pend","Pendiente"], aprobado:["apro","Aprobado"], rechazado:["rech","Rechazado"], usado:["usado","Usado"]
+  pendiente:["pend","Pendiente"], aprobado:["apro","Vigente"], rechazado:["rech","Anulado"], usado:["usado","Usado"]
 };
-function prepararQrYPermisos(e){
-  const img = $("#miQrImg"), txt = $("#miQrTxt");
-  const url = e.qr ? qrDataUrl(contenidoQR(e.id, e.qr)) : null;
-  if(url){ img.src = url; show(img,true); txt.textContent = "Muestre este código al celador al entrar y al salir."; }
-  else{ show(img,false); txt.textContent = e.qr ? "No se pudo generar el código. Revise su conexión y recargue." : "Su código QR aún no está listo. Pídale al administrador que lo genere."; }
-
-  const sel = $("#pMotivo"); sel.replaceChildren(); MOTIVOS_PERMISO.forEach(m => sel.append(new Option(m,m)));
-  $("#pDetalle").value = ""; show($("#pErr"),false);
-  st.misPermisos = []; renderMisPermisos();
-  st.unsubs.push(onSnapshot(query(collection(db,"permisos"), where("empleadoId","==",e.id)), snap=>{
-    st.misPermisos = snap.docs.map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
-      creado: x.creado && x.creado.toMillis ? x.creado.toMillis() : Date.now()}; }).sort((a,b)=>b.creado-a.creado).slice(0,8);
-    renderMisPermisos();
-  }, ()=>{}));
-}
-function renderMisPermisos(){
-  const box = $("#permLista"); box.replaceChildren();
-  const pend = st.misPermisos.filter(p=>p.estado==="pendiente").length, apro = st.misPermisos.filter(p=>p.estado==="aprobado").length;
-  const b = $("#permBadge");
-  b.textContent = apro ? "Autorizado" : pend ? "Pendiente" : ""; b.className = "pill " + (apro ? "apro" : "pend"); show(b, !!(apro||pend));
-  st.misPermisos.forEach(p=>{
-    const [cls, lbl] = ESTADO_PERMISO[p.estado] || ["usado", p.estado];
-    const it = mk("div","perm-item"); const top = mk("div","top");
-    top.append(mk("b",null,p.motivo), mk("span","pill "+cls,lbl));
-    it.append(top);
-    if(p.detalle) it.append(mk("span","muted",p.detalle));
-    it.append(mk("span","muted num",`${fmtFecha(p.creado)} · ${fmtHora(p.creado)}`));
-    box.append(it);
-  });
-}
-$("#formPermiso").addEventListener("submit", async ev=>{
-  ev.preventDefault();
-  const err = $("#pErr"); show(err,false);
-  const bad = m => { err.textContent = m; show(err,true); };
-  const e = st.sel; if(!e || st.rol!=="empleado") return bad("Inicie sesión primero.");
-  const motivo = $("#pMotivo").value, detalle = $("#pDetalle").value.trim();
-  if(!SIN_DETALLE.has(motivo) && detalle.length < 4) return bad("Escriba el detalle del permiso.");
-  if(st.misPermisos.some(p=>p.estado==="pendiente")) return bad("Ya tiene una solicitud pendiente. Espere la respuesta del administrador.");
-  const btn = ev.submitter || $("#formPermiso button[type=submit]"); btn.disabled = true;
-  try{
-    await addDoc(collection(db,"permisos"), {empleadoId:auth.currentUser.uid, nombre:e.nombre, cedula:String(e.cedula),
-      motivo, detalle, estado:"pendiente", creado:serverTimestamp()});
-    $("#pDetalle").value = "";
-  }catch(x){ bad(errText(x)); }
-  finally{ btn.disabled = false; }
-});
-
-/* cambiar mi contraseña */
-$("#formMiClave").addEventListener("submit", async ev=>{
-  ev.preventDefault();
-  const err = $("#mcErr"), ok = $("#mcOk"); show(err,false); show(ok,false);
-  const bad = m => { err.textContent = m; show(err,true); };
-  const actual = $("#mcActual").value, nueva = $("#mcNueva").value;
-  if(nueva.length < 6) return bad("La contraseña nueva debe tener al menos 6 caracteres.");
-  if(nueva !== $("#mcNueva2").value) return bad("Las contraseñas nuevas no coinciden.");
-  try{
-    await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, actual));
-    await updatePassword(auth.currentUser, nueva);
-    ["#mcActual","#mcNueva","#mcNueva2"].forEach(s=>$(s).value="");
-    ok.textContent = "Contraseña cambiada."; show(ok,true);
-  }catch(e){
-    bad(e.code==="auth/invalid-credential"||e.code==="auth/wrong-password" ? "La contraseña actual no es correcta." : errText(e));
-  }
-});
 
 /* ---------- administración ---------- */
 document.querySelectorAll(".sub").forEach(b => b.onclick = () => {
@@ -320,8 +199,10 @@ function abrirPanel(){
 function renderPermisosAdmin(){
   const box = $("#permAdmin"), msg = $("#permMsg"); box.replaceChildren();
   const pend = st.permisos.filter(p=>p.estado==="pendiente");
-  const n = $("#subPermN"); n.textContent = pend.length; show(n, pend.length>0);
-  $("#permCount").textContent = pend.length ? `${pend.length} pendiente${pend.length>1?"s":""}` : "";
+  const hoyYmd = ymd(new Date());
+  const vigentes = st.permisos.filter(p=>p.estado==="aprobado" && ymd(new Date(p.creado))===hoyYmd).length;
+  const n = $("#subPermN"); n.textContent = vigentes; show(n, vigentes>0);
+  $("#permCount").textContent = vigentes ? `${vigentes} vigente${vigentes>1?"s":""} hoy` : "";
   let m = "";
   if(st.permisosErr) m = errText(st.permisosErr);
   else if(!st.permisosLoaded) m = "Cargando…";
@@ -349,7 +230,7 @@ function renderPermisosAdmin(){
       const no = mk("button","btn no-b","Rechazar"); no.type = "button"; no.onclick = () => decidir("rechazado", no);
       ro.append(ok, no);
     }else if(p.estado==="aprobado"){
-      const no = mk("button","btn no-b","Revocar"); no.type = "button"; no.onclick = () => decidir("rechazado", no);
+      const no = mk("button","btn no-b","Anular"); no.type = "button"; no.onclick = () => decidir("rechazado", no);
       ro.append(no);
     }
     acc.append(ro);
@@ -358,6 +239,28 @@ function renderPermisosAdmin(){
   });
   t.append(tb); wrap.append(t); box.append(wrap);
 }
+
+/* ---------- administración: registrar un permiso ---------- */
+(function(){ const m = $("#nMotivo"); MOTIVOS_PERMISO.forEach(x => m.append(new Option(x,x))); })();
+$("#formPerm").addEventListener("submit", async ev=>{
+  ev.preventDefault();
+  const err = $("#nErr"), ok = $("#nOk"); show(err,false); show(ok,false);
+  const bad = m => { err.textContent = m; show(err,true); };
+  const emp = st.empleados.find(e=>e.id===$("#nEmp").value);
+  const motivo = $("#nMotivo").value, detalle = $("#nDetalle").value.trim();
+  if(!emp) return bad("Seleccione a la persona.");
+  if(!SIN_DETALLE.has(motivo) && detalle.length < 4) return bad("Escriba el detalle del permiso.");
+  if(st.permisos.some(p=>p.empleadoId===emp.id && p.estado==="aprobado" && ymd(new Date(p.creado))===ymd(new Date())))
+    return bad("Esa persona ya tiene un permiso vigente hoy. Anúlelo si quiere registrar otro.");
+  const btn = ev.submitter || $("#formPerm button[type=submit]"); btn.disabled = true;
+  try{
+    await addDoc(collection(db,"permisos"), {empleadoId:emp.id, nombre:emp.nombre, cedula:String(emp.cedula), motivo, detalle,
+      estado:"aprobado", creado:serverTimestamp(), resuelto:serverTimestamp(), resueltoPor:auth.currentUser.email});
+    $("#nDetalle").value = ""; $("#nEmp").value = "";
+    ok.textContent = `Permiso registrado para ${emp.nombre}. El celador lo verá al escanear su QR.`; show(ok,true);
+  }catch(e){ bad(errText(e)); }
+  finally{ btn.disabled = false; }
+});
 
 /* ---------- administración: código QR de cada empleado ---------- */
 function abrirQr(e){
@@ -515,6 +418,8 @@ function renderRegistros(){
 }
 
 function fillEmpSelect(){
+  const ne = $("#nEmp"), nv = ne.value; ne.replaceChildren(new Option("Seleccione a la persona",""));
+  activos().forEach(e => ne.append(new Option(e.nombre + " · " + e.cedula, e.id))); ne.value = nv;
   ["#fEmp","#rEmp"].forEach(sel=>{
     const s = $(sel), v = s.value; s.replaceChildren(new Option("Todo el personal",""));
     st.empleados.forEach(e => s.append(new Option(e.nombre + (e.activo===false?" (inactivo)":""), e.id)));
@@ -672,15 +577,11 @@ function renderPersonal(){
   const box = $("#perList"); box.replaceChildren();
   $("#perCount").textContent = st.empleados.length ? `${activos().length} activos de ${st.empleados.length}` : "";
   if(!st.empleados.length){ box.append(mk("div","empty", st.empLoaded ? "Aún no hay nadie. Agregue a la primera persona con el formulario." : "Cargando…")); return; }
-  const wrap = mk("div","table-wrap"); const t = mk("table"); t.style.minWidth = "640px";
-  t.innerHTML = "<thead><tr><th>Nombre</th><th>Usuario</th><th>Documento</th><th>Cargo</th><th>Estado</th><th></th></tr></thead>";
+  const wrap = mk("div","table-wrap"); const t = mk("table"); t.style.minWidth = "560px";
+  t.innerHTML = "<thead><tr><th>Nombre</th><th>Documento</th><th>Cargo</th><th>Estado</th><th></th></tr></thead>";
   const tb = mk("tbody");
   st.empleados.forEach(e=>{
     const tr = mk("tr"); tr.style.cursor = "default";
-    const b = mk("button","btn", e.activo===false ? "Activar" : "Desactivar"); b.type = "button";
-    b.onclick = async () => { b.disabled = true; try{ await updateDoc(doc(db,"empleados",e.id), {activo: e.activo===false}); }catch(err){ b.textContent = "Error"; } b.disabled = false; };
-    const r = mk("button","btn","Nueva contraseña"); r.type = "button";
-    const tdE = mk("td"); tdE.append(mk("span","pill "+(e.activo===false?"off":"in"), e.activo===false?"Inactivo":"Activo"));
     const qb = mk("button","btn", e.qr ? "Ver QR" : "Generar QR"); qb.type = "button";
     qb.onclick = async () => {
       if(e.qr) return abrirQr(e);
@@ -689,41 +590,40 @@ function renderPersonal(){
       catch{ qb.textContent = "Error"; }
       qb.disabled = false;
     };
-    const tdB = mk("td"); const acc = mk("div","row-actions"); acc.append(qb, r, b); tdB.append(acc);
-    r.onclick = () => {
-      acc.replaceChildren();
-      const inp = mk("input"); inp.type = "text"; inp.placeholder = "Nueva contraseña"; inp.maxLength = 40; inp.style.maxWidth = "170px"; inp.id = "reset-"+e.id;
-      const ok = mk("button","btn primary","Guardar"); ok.type = "button";
-      const no = mk("button","btn","Cancelar"); no.type = "button"; no.onclick = renderPersonal;
-      const msg = mk("span","muted"); msg.style.fontSize = "13px";
-      ok.onclick = async () => {
-        const v = inp.value;
-        if(v.length < 6){ inp.value = ""; inp.placeholder = "Mínimo 6 caracteres"; return; }
-        if(!fns){ msg.textContent = "Función no disponible."; return; }
-        ok.disabled = true; msg.textContent = "Guardando…";
-        try{
-          await httpsCallable(fns, "cambiarClaveEmpleado")({uid:e.id, clave:v});
-          acc.replaceChildren(mk("span","ok-msg","Contraseña cambiada")); setTimeout(renderPersonal, 2500);
-        }catch(err){
-          ok.disabled = false;
-          msg.textContent = (err.code||"").includes("not-found") || (err.code||"").includes("internal")
-            ? "La función opcional no está desplegada (vea la guía, paso 7)."
-            : (err.message || "No se pudo cambiar.");
-        }
-      };
-      acc.append(inp, ok, no, msg); inp.focus();
-    };
-    tr.append(mk("td",null,e.nombre), mk("td","num",e.usuario||"—"), mk("td","num",e.cedula), mk("td",null,e.cargo||"—"), tdE, tdB);
+    const b = mk("button","btn", e.activo===false ? "Activar" : "Desactivar"); b.type = "button";
+    b.onclick = async () => { b.disabled = true; try{ await updateDoc(doc(db,"empleados",e.id), {activo: e.activo===false}); }catch(err){ b.textContent = "Error"; } b.disabled = false; };
+    const tdE = mk("td"); tdE.append(mk("span","pill "+(e.activo===false?"off":"in"), e.activo===false?"Inactivo":"Activo"));
+    const tdB = mk("td"); const acc = mk("div","row-actions"); acc.append(qb, b); tdB.append(acc);
+    tr.append(mk("td",null,e.nombre), mk("td","num",e.cedula), mk("td",null,e.cargo||"—"), tdE, tdB);
     tb.append(tr);
   });
   t.append(tb); wrap.append(t); box.append(wrap);
-  box.append(mk("p","foot-note","Desactivar impide que la persona marque, sin borrar su historial. «Ver QR» muestra el código para imprimirlo o enviarlo al empleado."));
-  const sinQr = st.empleados.filter(e=>!e.qr);
+
+  const conQr = activos().filter(e=>e.qr), sinQr = st.empleados.filter(e=>!e.qr);
+  const barra = mk("div","row-actions"); barra.style.marginTop = "4px";
+  if(conQr.length){ const p = mk("button","btn primary",`Imprimir carnets (${conQr.length})`); p.type = "button"; p.onclick = imprimirCarnets; barra.append(p); }
   if(sinQr.length){
-    const g = mk("button","btn",`Generar QR para ${sinQr.length} persona${sinQr.length>1?"s":""} sin código`); g.type = "button";
+    const g = mk("button","btn",`Generar QR para ${sinQr.length} sin código`); g.type = "button";
     g.onclick = async () => { g.disabled = true; try{ for(const e of sinQr) await generarQr(e); }catch{ g.textContent = "Error"; g.disabled = false; } };
-    box.append(g);
+    barra.append(g);
   }
+  if(barra.children.length) box.append(barra);
+  box.append(mk("p","foot-note","El QR se imprime y se entrega al trabajador. Desactivar impide que pueda entrar o salir, sin borrar su historial."));
+}
+
+/** Hoja imprimible con el carnet (nombre + QR) de cada persona activa. */
+function imprimirCarnets(){
+  const hoja = $("#hojaQr"); hoja.replaceChildren();
+  activos().filter(e=>e.qr).forEach(e=>{
+    const url = qrDataUrl(contenidoQR(e.id, e.qr)); if(!url) return;
+    const c = mk("div","carnet"); const im = mk("img"); im.src = url; im.alt = "QR de "+e.nombre;
+    c.append(mk("small",null,st.ajustes.empresa || "Control de personal"), im, mk("b",null,e.nombre), mk("span",null,`C.C. ${e.cedula}${e.cargo ? " · "+e.cargo : ""}`));
+    hoja.append(c);
+  });
+  if(!hoja.children.length) return;
+  document.body.classList.add("imprimiendo-todos");
+  const fin = () => { document.body.classList.remove("imprimiendo-todos"); window.removeEventListener("afterprint", fin); };
+  window.addEventListener("afterprint", fin); window.print();
 }
 
 $("#formEmp").addEventListener("submit", async ev=>{
@@ -733,28 +633,18 @@ $("#formEmp").addEventListener("submit", async ev=>{
   const nombre = $("#eNombre").value.trim().replace(/\s+/g," ");
   const cedula = $("#eDoc").value.replace(/\D/g,"");
   const cargo = $("#eCargo").value.trim();
-  const usuario = normUser($("#eUsuario").value), clave = $("#eClave").value;
   if(nombre.length < 3) return bad("Escriba el nombre completo.");
   if(cedula.length < 5) return bad("Escriba un número de documento válido (solo dígitos).");
-  if(usuario.length < 3) return bad("El usuario debe tener al menos 3 caracteres (letras, números, punto o guion).");
-  if(clave.length < 6) return bad("La contraseña debe tener al menos 6 caracteres.");
   if(st.empleados.some(e=>String(e.cedula)===cedula)) return bad("Ya existe una persona con ese documento.");
-  if(st.empleados.some(e=>e.usuario===usuario)) return bad(`El usuario «${usuario}» ya está en uso. Elija otro.`);
   const btn = ev.submitter || $("#formEmp button[type=submit]"); btn.disabled = true;
-  // Se crea la cuenta con una instancia secundaria para no cerrar la sesión del administrador.
-  const sec = initializeApp(firebaseConfig, "alta-"+Date.now());
   try{
-    const secAuth = getAuth(sec);
-    const cred = await createUserWithEmailAndPassword(secAuth, `${usuario}@${DOMINIO_USUARIOS}`, clave);
-    await setDoc(doc(db,"empleados",cred.user.uid), {nombre, cedula, cargo, usuario, activo:true, qr:nuevoToken(), creado:serverTimestamp()});
-    await signOut(secAuth);
-    ["#eNombre","#eDoc","#eCargo","#eUsuario","#eClave"].forEach(s => $(s).value = "");
-    ok.textContent = `${nombre} quedó agregado(a) con el usuario «${usuario}».`; show(ok,true); $("#eNombre").focus();
-  }catch(e){
-    if(e.code==="auth/email-already-in-use") bad(`El usuario «${usuario}» ya existe en Firebase. Elija otro o elimínelo en la consola (Authentication).`);
-    else if(e.code==="auth/operation-not-allowed") bad("Active el inicio de sesión con correo y contraseña en Firebase Authentication (vea la guía).");
-    else bad(errText(e));
-  }finally{ btn.disabled = false; deleteApp(sec).catch(()=>{}); }
+    const qr = nuevoToken();
+    const ref = await addDoc(collection(db,"empleados"), {nombre, cedula, cargo, activo:true, qr, creado:serverTimestamp()});
+    ["#eNombre","#eDoc","#eCargo"].forEach(s => $(s).value = "");
+    ok.textContent = `${nombre} quedó agregado(a). Imprima su QR y entréguelo.`; show(ok,true);
+    abrirQr({id:ref.id, nombre, cedula, cargo, qr});
+  }catch(e){ bad(errText(e)); }
+  finally{ btn.disabled = false; }
 });
 
 /* ---------- ajustes ---------- */
