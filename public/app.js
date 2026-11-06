@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, query, where, orderBy, limit,
-  getDocs, onSnapshot, serverTimestamp, Timestamp
+  getDocs, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig, ADMIN_EMAILS, DOMINIO_USUARIOS, REGION_FUNCIONES } from "./config.js";
@@ -17,8 +17,22 @@ const st = {
   rol:null, user:null, sel:null, ultima:null, tipo:"ingreso", motivo:null, strokes:[], saving:false,
   empleados:[], empLoaded:false, ajustes:{},
   marcas:[], marcasLoaded:false, marcasSlow:false, marcasErr:null, modalId:null,
-  unsubs:[], unsubMarcas:null
+  unsubs:[], unsubMarcas:null,
+  permisos:[], misPermisos:[], celadores:[]
 };
+const MOTIVOS_PERMISO = MOTIVOS.filter(m => m !== "Fin de jornada");
+const PREFIJO_QR = "PIC";
+/** Código secreto único de cada empleado (se guarda en su ficha y va dentro del QR) */
+function nuevoToken(){
+  const a = new Uint8Array(16); crypto.getRandomValues(a);
+  return Array.from(a, b => b.toString(36).padStart(2,"0")).join("").slice(0,24);
+}
+const contenidoQR = (uid, token) => `${PREFIJO_QR}|${uid}|${token}`;
+function qrDataUrl(texto){
+  if(typeof qrcode !== "function") return null;
+  const q = qrcode(0, "M"); q.addData(texto); q.make();
+  return q.createDataURL(8, 2);
+}
 
 /* ---------- utilidades ---------- */
 const z = n => String(n).padStart(2,"0");
@@ -76,9 +90,11 @@ function tick(){
 setInterval(tick,1000); tick();
 
 /* ---------- vistas ---------- */
-function vista(v){ // "login" | "empleado" | "admin"
+function vista(v){ // "login" | "empleado" | "celador" | "admin"
   show($("#heroKiosk"), v!=="admin"); show($("#heroAdmin"), v==="admin");
-  show($("#vKiosk"), v!=="admin"); show($("#vAdmin"), v==="admin");
+  show($("#vKiosk"), v==="login" || v==="empleado"); show($("#vAdmin"), v==="admin");
+  show($("#vGuard"), v==="celador");
+  if(v!=="celador") detenerCamara();
   show($("#userBox"), v!=="login");
   if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#pasoTipo"),false); show($("#stepOk"),false); show($("#stepForm"),true); }
   requestAnimationFrame(padSize);
@@ -123,6 +139,7 @@ function limpiarSuscripciones(){
   st.unsubs.forEach(u=>{ try{u();}catch{} }); st.unsubs = [];
   if(st.unsubMarcas){ st.unsubMarcas(); st.unsubMarcas = null; }
   st.marcas = []; st.empleados = []; st.empLoaded = false;
+  st.permisos = []; st.misPermisos = []; st.celadores = [];
 }
 
 if(auth) onAuthStateChanged(auth, async user=>{
@@ -136,7 +153,16 @@ if(auth) onAuthStateChanged(auth, async user=>{
   // empleado
   try{
     const s = await getDoc(doc(db,"empleados",user.uid));
-    if(!s.exists()){ await signOut(auth); return loginMsg("Este usuario no está registrado como empleado. Hable con el administrador."); }
+    if(!s.exists()){
+      const c = await getDoc(doc(db,"celadores",user.uid)).catch(()=>null);
+      if(c && c.exists()){
+        const cel = {id:c.id, ...c.data()};
+        if(cel.activo === false){ await signOut(auth); return loginMsg("Su usuario está desactivado. Hable con el administrador."); }
+        st.rol = "celador"; $("#userName").textContent = cel.nombre; st.guard = cel;
+        vista("celador"); iniciarPorteria(); return;
+      }
+      await signOut(auth); return loginMsg("Este usuario no está registrado. Hable con el administrador.");
+    }
     const e = {id:s.id, ...s.data()};
     if(e.activo === false){ await signOut(auth); return loginMsg("Su usuario está desactivado. Hable con el administrador."); }
     st.rol = "empleado"; $("#userName").textContent = e.nombre;
@@ -162,6 +188,7 @@ async function seleccionar(e){
   $("#histList").replaceChildren(mk("span","muted","Cargando…")); $("#historial").open = false; $("#miClave").open = false;
   show($("#seleccion"),true); show($("#pasoTipo"),true); show($("#error"),false);
   setTipo("ingreso"); requestAnimationFrame(padSize); vigilarInactividad();
+  prepararQrYPermisos(e);
   let hist = [];
   try{
     const q = query(collection(db,"marcas"), where("empleadoId","==",e.id), orderBy("ts","desc"), limit(6));
@@ -213,6 +240,57 @@ function renderMotivos(){
   });
   $("#detReq").textContent = st.motivo && SIN_DETALLE.has(st.motivo) ? "(opcional)" : "(obligatorio)";
 }
+
+/* ---------- empleado: mi código QR y permisos de salida ---------- */
+const ESTADO_PERMISO = {
+  pendiente:["pend","Pendiente"], aprobado:["apro","Aprobado"], rechazado:["rech","Rechazado"], usado:["usado","Usado"]
+};
+function prepararQrYPermisos(e){
+  const img = $("#miQrImg"), txt = $("#miQrTxt");
+  const url = e.qr ? qrDataUrl(contenidoQR(e.id, e.qr)) : null;
+  if(url){ img.src = url; show(img,true); txt.textContent = "Muestre este código al celador al entrar y al salir."; }
+  else{ show(img,false); txt.textContent = e.qr ? "No se pudo generar el código. Revise su conexión y recargue." : "Su código QR aún no está listo. Pídale al administrador que lo genere."; }
+
+  const sel = $("#pMotivo"); sel.replaceChildren(); MOTIVOS_PERMISO.forEach(m => sel.append(new Option(m,m)));
+  $("#pDetalle").value = ""; show($("#pErr"),false);
+  st.misPermisos = []; renderMisPermisos();
+  st.unsubs.push(onSnapshot(query(collection(db,"permisos"), where("empleadoId","==",e.id)), snap=>{
+    st.misPermisos = snap.docs.map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
+      creado: x.creado && x.creado.toMillis ? x.creado.toMillis() : Date.now()}; }).sort((a,b)=>b.creado-a.creado).slice(0,8);
+    renderMisPermisos();
+  }, ()=>{}));
+}
+function renderMisPermisos(){
+  const box = $("#permLista"); box.replaceChildren();
+  const pend = st.misPermisos.filter(p=>p.estado==="pendiente").length, apro = st.misPermisos.filter(p=>p.estado==="aprobado").length;
+  const b = $("#permBadge");
+  b.textContent = apro ? "Autorizado" : pend ? "Pendiente" : ""; b.className = "pill " + (apro ? "apro" : "pend"); show(b, !!(apro||pend));
+  st.misPermisos.forEach(p=>{
+    const [cls, lbl] = ESTADO_PERMISO[p.estado] || ["usado", p.estado];
+    const it = mk("div","perm-item"); const top = mk("div","top");
+    top.append(mk("b",null,p.motivo), mk("span","pill "+cls,lbl));
+    it.append(top);
+    if(p.detalle) it.append(mk("span","muted",p.detalle));
+    it.append(mk("span","muted num",`${fmtFecha(p.creado)} · ${fmtHora(p.creado)}`));
+    box.append(it);
+  });
+}
+$("#formPermiso").addEventListener("submit", async ev=>{
+  ev.preventDefault();
+  const err = $("#pErr"); show(err,false);
+  const bad = m => { err.textContent = m; show(err,true); };
+  const e = st.sel; if(!e || st.rol!=="empleado") return bad("Inicie sesión primero.");
+  const motivo = $("#pMotivo").value, detalle = $("#pDetalle").value.trim();
+  if(!SIN_DETALLE.has(motivo) && detalle.length < 4) return bad("Escriba el detalle del permiso.");
+  if(st.misPermisos.some(p=>p.estado==="pendiente")) return bad("Ya tiene una solicitud pendiente. Espere la respuesta del administrador.");
+  const btn = ev.submitter || $("#formPermiso button[type=submit]"); btn.disabled = true;
+  try{
+    await addDoc(collection(db,"permisos"), {empleadoId:auth.currentUser.uid, nombre:e.nombre, cedula:String(e.cedula),
+      motivo, detalle, estado:"pendiente", creado:serverTimestamp()});
+    $("#pDetalle").value = "";
+  }catch(x){ bad(errText(x)); }
+  finally{ btn.disabled = false; }
+});
 
 /* cambiar mi contraseña */
 $("#formMiClave").addEventListener("submit", async ev=>{
@@ -314,7 +392,7 @@ function exito(d){
 /* ---------- administración ---------- */
 document.querySelectorAll(".sub").forEach(b => b.onclick = () => {
   document.querySelectorAll(".sub").forEach(x => x.classList.toggle("on", x===b));
-  ["Reg","Res","Per","Aj"].forEach(k => show($("#sub"+k), b.dataset.sub===k));
+  ["Reg","Res","Perm","Per","Aj"].forEach(k => show($("#sub"+k), b.dataset.sub===k));
   if(b.dataset.sub==="Res") renderResumen();
 });
 
@@ -326,8 +404,129 @@ function abrirPanel(){
     st.empleados = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"","es"));
     st.empLoaded = true; renderPersonal(); fillEmpSelect();
   }, err=>{ $("#perList").replaceChildren(mk("div","empty",errText(err))); }));
+  st.unsubs.push(onSnapshot(query(collection(db,"permisos"), orderBy("creado","desc"), limit(200)), snap=>{
+    st.permisos = snap.docs.map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
+      creado: x.creado && x.creado.toMillis ? x.creado.toMillis() : Date.now()}; });
+    st.permisosLoaded = true; renderPermisosAdmin();
+  }, err=>{ st.permisosErr = err; renderPermisosAdmin(); }));
+  st.unsubs.push(onSnapshot(collection(db,"celadores"), snap=>{
+    st.celadores = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"","es"));
+    renderCeladores();
+  }, ()=>{}));
   suscribirMarcas();
 }
+
+/* ---------- administración: permisos de salida ---------- */
+function renderPermisosAdmin(){
+  const box = $("#permAdmin"), msg = $("#permMsg"); box.replaceChildren();
+  const pend = st.permisos.filter(p=>p.estado==="pendiente");
+  const n = $("#subPermN"); n.textContent = pend.length; show(n, pend.length>0);
+  $("#permCount").textContent = pend.length ? `${pend.length} pendiente${pend.length>1?"s":""}` : "";
+  let m = "";
+  if(st.permisosErr) m = errText(st.permisosErr);
+  else if(!st.permisosLoaded) m = "Cargando…";
+  else if(!st.permisos.length) m = "Todavía no hay solicitudes de permiso.";
+  msg.textContent = m; show(msg, !!m);
+  if(!st.permisos.length) return;
+  const wrap = mk("div","table-wrap"); const t = mk("table"); t.style.minWidth = "640px";
+  t.innerHTML = "<thead><tr><th>Fecha</th><th>Persona</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>";
+  const tb = mk("tbody");
+  // pendientes primero, luego el resto por fecha
+  [...pend, ...st.permisos.filter(p=>p.estado!=="pendiente")].forEach(p=>{
+    const tr = mk("tr"); tr.style.cursor = "default";
+    const per = mk("td"); per.append(mk("div",null,p.nombre), mk("small","num muted",p.cedula));
+    const mot = mk("td","just"); mot.append(mk("b",null,p.motivo)); if(p.detalle) mot.append(mk("small",null,p.detalle));
+    const [cls, lbl] = ESTADO_PERMISO[p.estado] || ["usado", p.estado];
+    const est = mk("td"); est.append(mk("span","pill "+cls,lbl));
+    const acc = mk("td"); const ro = mk("div","perm-actions");
+    const decidir = async (estado, btn) => {
+      btn.disabled = true;
+      try{ await updateDoc(doc(db,"permisos",p.id), {estado, resuelto:serverTimestamp(), resueltoPor:auth.currentUser.email}); }
+      catch(e){ btn.textContent = "Error"; btn.disabled = false; }
+    };
+    if(p.estado==="pendiente"){
+      const ok = mk("button","btn ok-b","Aprobar"); ok.type = "button"; ok.onclick = () => decidir("aprobado", ok);
+      const no = mk("button","btn no-b","Rechazar"); no.type = "button"; no.onclick = () => decidir("rechazado", no);
+      ro.append(ok, no);
+    }else if(p.estado==="aprobado"){
+      const no = mk("button","btn no-b","Revocar"); no.type = "button"; no.onclick = () => decidir("rechazado", no);
+      ro.append(no);
+    }
+    acc.append(ro);
+    tr.append(mk("td","num",`${fmtFecha(p.creado)} · ${fmtHora(p.creado)}`), per, mot, est, acc);
+    tb.append(tr);
+  });
+  t.append(tb); wrap.append(t); box.append(wrap);
+}
+
+/* ---------- administración: código QR de cada empleado ---------- */
+function abrirQr(e){
+  const url = e.qr ? qrDataUrl(contenidoQR(e.id, e.qr)) : null;
+  if(!url) return;
+  $("#qTitulo").textContent = e.nombre; $("#qSub").textContent = `C.C. ${e.cedula}${e.cargo ? " · "+e.cargo : ""}`;
+  st.qrEmp = e; $("#qImg").src = url; show($("#qModal"),true); $("#qCerrar").focus();
+}
+function cerrarQr(){ show($("#qModal"),false); st.qrEmp = null; }
+$("#qNuevo").onclick = async () => {
+  const e = st.qrEmp; if(!e) return;
+  if(!confirm(`Se creará un código nuevo para ${e.nombre} y el anterior dejará de funcionar. ¿Continuar?`)) return;
+  const b = $("#qNuevo"); b.disabled = true;
+  try{ const qr = nuevoToken(); await updateDoc(doc(db,"empleados",e.id), {qr}); abrirQr({...e, qr}); }
+  catch{ b.textContent = "Error"; setTimeout(()=>b.textContent="Generar nuevo",2000); }
+  b.disabled = false;
+};
+$("#qCerrar").onclick = cerrarQr;
+$("#qModal").addEventListener("click", e => { if(e.target.id==="qModal") cerrarQr(); });
+$("#qImprimir").onclick = () => {
+  document.body.classList.add("imprimiendo");
+  const fin = () => { document.body.classList.remove("imprimiendo"); window.removeEventListener("afterprint", fin); };
+  window.addEventListener("afterprint", fin); window.print();
+};
+async function generarQr(e){ await updateDoc(doc(db,"empleados",e.id), {qr:nuevoToken()}); }
+
+/* ---------- administración: celadores ---------- */
+function renderCeladores(){
+  const box = $("#celList"); box.replaceChildren();
+  $("#celCount").textContent = st.celadores.length ? String(st.celadores.length) : "";
+  if(!st.celadores.length){ box.append(mk("div","empty","Aún no hay celadores. Agregue al primero con el formulario.")); return; }
+  const wrap = mk("div","table-wrap"); const t = mk("table"); t.style.minWidth = "420px";
+  t.innerHTML = "<thead><tr><th>Nombre</th><th>Usuario</th><th>Estado</th><th></th></tr></thead>";
+  const tb = mk("tbody");
+  st.celadores.forEach(c=>{
+    const tr = mk("tr"); tr.style.cursor = "default";
+    const b = mk("button","btn", c.activo===false ? "Activar" : "Desactivar"); b.type = "button";
+    b.onclick = async () => { b.disabled = true; try{ await updateDoc(doc(db,"celadores",c.id), {activo: c.activo===false}); }catch{ b.textContent = "Error"; } b.disabled = false; };
+    const tdE = mk("td"); tdE.append(mk("span","pill "+(c.activo===false?"off":"in"), c.activo===false?"Inactivo":"Activo"));
+    const tdB = mk("td"); tdB.append(b);
+    tr.append(mk("td",null,c.nombre), mk("td","num",c.usuario||"—"), tdE, tdB);
+    tb.append(tr);
+  });
+  t.append(tb); wrap.append(t); box.append(wrap);
+}
+$("#formCel").addEventListener("submit", async ev=>{
+  ev.preventDefault();
+  const err = $("#cErr"), ok = $("#cOk"); show(err,false); show(ok,false);
+  const bad = m => { err.textContent = m; show(err,true); };
+  const nombre = $("#cNombre").value.trim().replace(/\s+/g," ");
+  const usuario = normUser($("#cUsuario").value), clave = $("#cClave").value;
+  if(nombre.length < 3) return bad("Escriba el nombre del celador.");
+  if(usuario.length < 3) return bad("El usuario debe tener al menos 3 caracteres (letras, números, punto o guion).");
+  if(clave.length < 6) return bad("La contraseña debe tener al menos 6 caracteres.");
+  if(st.empleados.some(e=>e.usuario===usuario) || st.celadores.some(c=>c.usuario===usuario)) return bad(`El usuario «${usuario}» ya está en uso. Elija otro.`);
+  const btn = ev.submitter || $("#formCel button[type=submit]"); btn.disabled = true;
+  const sec = initializeApp(firebaseConfig, "alta-cel-"+Date.now());
+  try{
+    const secAuth = getAuth(sec);
+    const cred = await createUserWithEmailAndPassword(secAuth, `${usuario}@${DOMINIO_USUARIOS}`, clave);
+    await setDoc(doc(db,"celadores",cred.user.uid), {nombre, usuario, activo:true, creado:serverTimestamp()});
+    await signOut(secAuth);
+    ["#cNombre","#cUsuario","#cClave"].forEach(s => $(s).value = "");
+    ok.textContent = `${nombre} quedó agregado(a) como celador con el usuario «${usuario}».`; show(ok,true);
+  }catch(e){
+    if(e.code==="auth/email-already-in-use") bad(`El usuario «${usuario}» ya existe en Firebase. Elija otro.`);
+    else bad(errText(e));
+  }finally{ btn.disabled = false; deleteApp(sec).catch(()=>{}); }
+});
 
 function suscribirMarcas(){
   if(st.unsubMarcas) st.unsubMarcas();
@@ -401,6 +600,7 @@ function renderRegistros(){
     if(r.tipo==="salida"){ tdJ.append(mk("b",null,r.motivo||"—")); if(r.detalle) tdJ.append(mk("small",null,r.detalle)); } else tdJ.append(mk("span","muted","—"));
     const tdD = mk("td","num", r.tipo==="salida" && perm[r.id]!=null ? dur(perm[r.id]) : "—");
     const tdF = mk("td"); if(r.firma){ const im = mk("img","sig"); im.src = r.firma; im.alt = "Firma de "+r.nombre; tdF.append(im); }
+    else if(r.registradoPor) tdF.append(mk("span","pill off","QR portería"));
     tr.append(mk("td",null,fmtFecha(r.ts)), mk("td","num",fmtHora(r.ts)), tdP, tdT, tdJ, tdD, tdF);
     tr.tabIndex = 0;
     tr.onclick = () => abrirModal(r.id, perm[r.id]);
@@ -428,7 +628,8 @@ function abrirModal(id, permMs){
   const add = (k,v) => { dl.append(mk("dt",null,k), mk("dd",null,v)); };
   add("Fecha", fmtFechaLarga(r.ts)); add("Hora (servidor)", fmtHora(r.ts)); add("Documento", r.cedula); add("Cargo", r.cargo||"—");
   if(r.tipo==="salida"){ add("Motivo", r.motivo||"—"); add("Detalle", r.detalle||"—"); add("Permanencia", permMs!=null?dur(permMs):"Sin ingreso en el rango"); }
-  $("#mFirma").src = r.firma || "";
+  if(r.registradoPor) add("Registrado por", "Celador (código QR)");
+  $("#mFirma").src = r.firma || ""; show($("#mFirma"), !!r.firma);
   show($("#mConfirm"),false); show($("#mBorrar"),true); show($("#mErr"),false);
   show($("#modal"),true); $("#mCerrar").focus();
 }
@@ -577,7 +778,15 @@ function renderPersonal(){
     b.onclick = async () => { b.disabled = true; try{ await updateDoc(doc(db,"empleados",e.id), {activo: e.activo===false}); }catch(err){ b.textContent = "Error"; } b.disabled = false; };
     const r = mk("button","btn","Nueva contraseña"); r.type = "button";
     const tdE = mk("td"); tdE.append(mk("span","pill "+(e.activo===false?"off":"in"), e.activo===false?"Inactivo":"Activo"));
-    const tdB = mk("td"); const acc = mk("div","row-actions"); acc.append(r, b); tdB.append(acc);
+    const qb = mk("button","btn", e.qr ? "Ver QR" : "Generar QR"); qb.type = "button";
+    qb.onclick = async () => {
+      if(e.qr) return abrirQr(e);
+      qb.disabled = true;
+      try{ const qr = nuevoToken(); await updateDoc(doc(db,"empleados",e.id), {qr}); abrirQr({...e, qr}); }
+      catch{ qb.textContent = "Error"; }
+      qb.disabled = false;
+    };
+    const tdB = mk("td"); const acc = mk("div","row-actions"); acc.append(qb, r, b); tdB.append(acc);
     r.onclick = () => {
       acc.replaceChildren();
       const inp = mk("input"); inp.type = "text"; inp.placeholder = "Nueva contraseña"; inp.maxLength = 40; inp.style.maxWidth = "170px"; inp.id = "reset-"+e.id;
@@ -605,7 +814,13 @@ function renderPersonal(){
     tb.append(tr);
   });
   t.append(tb); wrap.append(t); box.append(wrap);
-  box.append(mk("p","foot-note","Desactivar impide que la persona marque, sin borrar su historial."));
+  box.append(mk("p","foot-note","Desactivar impide que la persona marque, sin borrar su historial. «Ver QR» muestra el código para imprimirlo o enviarlo al empleado."));
+  const sinQr = st.empleados.filter(e=>!e.qr);
+  if(sinQr.length){
+    const g = mk("button","btn",`Generar QR para ${sinQr.length} persona${sinQr.length>1?"s":""} sin código`); g.type = "button";
+    g.onclick = async () => { g.disabled = true; try{ for(const e of sinQr) await generarQr(e); }catch{ g.textContent = "Error"; g.disabled = false; } };
+    box.append(g);
+  }
 }
 
 $("#formEmp").addEventListener("submit", async ev=>{
@@ -628,7 +843,7 @@ $("#formEmp").addEventListener("submit", async ev=>{
   try{
     const secAuth = getAuth(sec);
     const cred = await createUserWithEmailAndPassword(secAuth, `${usuario}@${DOMINIO_USUARIOS}`, clave);
-    await setDoc(doc(db,"empleados",cred.user.uid), {nombre, cedula, cargo, usuario, activo:true, creado:serverTimestamp()});
+    await setDoc(doc(db,"empleados",cred.user.uid), {nombre, cedula, cargo, usuario, activo:true, qr:nuevoToken(), creado:serverTimestamp()});
     await signOut(secAuth);
     ["#eNombre","#eDoc","#eCargo","#eUsuario","#eClave"].forEach(s => $(s).value = "");
     ok.textContent = `${nombre} quedó agregado(a) con el usuario «${usuario}».`; show(ok,true); $("#eNombre").focus();
@@ -645,5 +860,146 @@ $("#formEmpresa").addEventListener("submit", async ev=>{
   try{ await setDoc(doc(db,"ajustes","general"), {empresa: $("#aEmpresa").value.trim()}, {merge:true}); ok.textContent = "Guardado."; show(ok,true); }
   catch(e){ ok.textContent = errText(e); show(ok,true); }
 });
+
+/* ---------- portería: el celador escanea el QR del empleado ---------- */
+const cam = {stream:null, raf:0, on:false};
+const gHist = [];
+function iniciarPorteria(){
+  gHist.length = 0; renderGHist(); limpiarResultado(); show($("#gErr"),false);
+  show($("#gIniciar"),true); show($("#gParar"),false); show($("#gScan"),false);
+}
+function detenerCamara(){
+  cam.on = false; cancelAnimationFrame(cam.raf);
+  if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream = null; }
+  const v = $("#gVideo"); if(v){ v.srcObject = null; }
+  show($("#gScan"),false); show($("#gParar"),false); show($("#gIniciar"),true);
+}
+function limpiarResultado(){ show($("#gRes"),false); }
+async function iniciarCamara(){
+  const err = $("#gErr"); show(err,false); limpiarResultado();
+  if(typeof jsQR !== "function"){ err.textContent = "No se pudo cargar el lector de QR. Revise la conexión y recargue la página."; return show(err,true); }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ err.textContent = "Este navegador no permite usar la cámara. Abra la página con HTTPS en Chrome o Safari."; return show(err,true); }
+  try{
+    cam.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}, audio:false});
+  }catch(e){
+    err.textContent = e && e.name==="NotAllowedError" ? "Permita el acceso a la cámara en el navegador para poder escanear." : "No se pudo abrir la cámara.";
+    return show(err,true);
+  }
+  const v = $("#gVideo"); v.srcObject = cam.stream; await v.play().catch(()=>{});
+  show($("#gScan"),true); show($("#gParar"),true); show($("#gIniciar"),false);
+  cam.on = true; bucleEscaneo();
+}
+function bucleEscaneo(){
+  if(!cam.on) return;
+  const v = $("#gVideo");
+  if(v.readyState >= 2 && v.videoWidth){
+    const c = $("#gCanvas"), ctx = c.getContext("2d", {willReadFrequently:true});
+    const w = Math.min(640, v.videoWidth), h = Math.round(v.videoHeight * w / v.videoWidth);
+    c.width = w; c.height = h; ctx.drawImage(v, 0, 0, w, h);
+    const code = jsQR(ctx.getImageData(0,0,w,h).data, w, h, {inversionAttempts:"dontInvert"});
+    if(code && code.data){
+      detenerCamara();
+      if(navigator.vibrate) navigator.vibrate(60);
+      procesarQr(code.data); return;
+    }
+  }
+  cam.raf = requestAnimationFrame(bucleEscaneo);
+}
+$("#gIniciar").onclick = iniciarCamara;
+$("#gParar").onclick = detenerCamara;
+
+/** Muestra el resultado del escaneo. Sin botones propios, ofrece «Escanear siguiente». */
+function resultado(tipo, icono, titulo, nombre, sub, botones){
+  const r = $("#gRes"); r.className = "res " + tipo;
+  $("#gIco").textContent = icono; $("#gTit").textContent = titulo; $("#gNom").textContent = nombre || ""; $("#gSub").textContent = sub || "";
+  const acc = $("#gAcc");
+  if(botones === null) acc.replaceChildren();                       // cargando: sin botones
+  else if(botones && botones.length) acc.replaceChildren(...botones);
+  else acc.replaceChildren(botonG("Escanear siguiente","primary big",iniciarCamara));
+  show(r,true); r.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
+function botonG(txt, cls, fn){ const b = mk("button","btn "+cls,txt); b.type = "button"; b.onclick = fn; return b; }
+function anotarG(tipo, nombre, extra){
+  gHist.unshift({tipo, nombre, extra, ts:Date.now()}); gHist.length = Math.min(gHist.length, 8); renderGHist();
+}
+function renderGHist(){
+  const box = $("#gHistList"); box.replaceChildren(); show($("#gHist"), gHist.length>0);
+  gHist.forEach(h=>{
+    const row = mk("div","g-item");
+    row.append(mk("span","pill "+(h.tipo==="ingreso"?"in":h.tipo==="salida"?"out":"rech"), h.tipo==="ingreso"?"Ingreso":h.tipo==="salida"?"Salida":"Rechazado"),
+      mk("b",null,h.nombre), mk("span","muted num",fmtHora(h.ts)));
+    if(h.extra) row.append(mk("span","muted",h.extra));
+    box.append(row);
+  });
+}
+
+async function procesarQr(texto){
+  const partes = String(texto).split("|");
+  if(partes.length !== 3 || partes[0] !== PREFIJO_QR){
+    return resultado("bad","✕","Código no válido","","Este QR no pertenece al sistema de la empresa.");
+  }
+  const [, uid, token] = partes;
+  resultado("","…","Verificando…","","",null);
+  try{
+    const s = await getDoc(doc(db,"empleados",uid));
+    if(!s.exists() || !s.data().qr || s.data().qr !== token){
+      anotarG("rechazado","QR inválido");
+      return resultado("bad","✕","Código no válido","","El código no coincide con ningún empleado o fue reemplazado.");
+    }
+    const e = {id:s.id, ...s.data()};
+    if(e.activo === false){
+      anotarG("rechazado", e.nombre, "desactivado");
+      return resultado("bad","✕","Empleado desactivado", e.nombre, "No puede ingresar ni salir. Informe al administrador.");
+    }
+    const ult = (await getDocs(query(collection(db,"marcas"), where("empleadoId","==",e.id), orderBy("ts","desc"), limit(1)))).docs.map(marcaDe)[0];
+    const dentro = ult && ult.tipo==="ingreso" && (Date.now()-ult.ts) < 20*3600e3;
+    if(!dentro) return registrarPorteria(e, "ingreso", null);
+
+    // Salida: requiere un permiso aprobado hoy
+    const hoy = ymd(new Date());
+    const ps = (await getDocs(query(collection(db,"permisos"), where("empleadoId","==",e.id), where("estado","in",["aprobado","pendiente"])))).docs
+      .map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
+        resuelto: x.resuelto && x.resuelto.toMillis ? x.resuelto.toMillis() : 0}; });
+    const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0];
+    if(aprobado) return registrarPorteria(e, "salida", aprobado);
+    const pend = ps.some(p=>p.estado==="pendiente");
+    anotarG("rechazado", e.nombre, "sin permiso");
+    return resultado("bad","✕","Sin permiso de salida", e.nombre,
+      pend ? "Tiene una solicitud pendiente: el administrador aún no la aprueba." : "No tiene un permiso aprobado para salir hoy.",
+      [botonG("Es fin de jornada: registrar salida","primary",()=>registrarPorteria(e,"salida",null)),
+       botonG("Escanear otro","",iniciarCamara)]);
+  }catch(err){
+    resultado("bad","!","No se pudo verificar","",errText(err),[botonG("Escanear de nuevo","primary",iniciarCamara)]);
+  }
+}
+
+async function registrarPorteria(e, tipo, permiso){
+  $("#gAcc").querySelectorAll("button").forEach(b=>b.disabled = true);
+  try{
+    const ref = doc(collection(db,"marcas"));
+    const data = {
+      empleadoId:e.id, nombre:e.nombre, cedula:String(e.cedula), cargo:e.cargo||"", tipo, ts:serverTimestamp(),
+      motivo: tipo==="salida" ? (permiso ? permiso.motivo : "Fin de jornada") : "",
+      detalle: tipo==="salida" && permiso ? (permiso.detalle||"") : "",
+      firma:"", dispositivo:navigator.userAgent.slice(0,180), registradoPor:auth.currentUser.uid
+    };
+    const batch = writeBatch(db);
+    batch.set(ref, data);
+    if(permiso) batch.update(doc(db,"permisos",permiso.id), {estado:"usado", usadoEn:serverTimestamp()});
+    await batch.commit();
+    const hora = fmtHora(Date.now());
+    if(tipo==="ingreso"){
+      anotarG("ingreso", e.nombre);
+      resultado("ok","→","Ingreso registrado", e.nombre, `${e.cargo ? e.cargo+" · " : ""}${hora}`);
+    }else{
+      anotarG("salida", e.nombre, permiso ? permiso.motivo : "fin de jornada");
+      resultado("ok","←", permiso ? "Salida autorizada" : "Salida registrada", e.nombre,
+        permiso ? `Permiso aprobado: ${permiso.motivo} · ${hora}` : `Fin de jornada · ${hora}`);
+    }
+  }catch(err){
+    resultado("bad","!","No se pudo registrar", e.nombre, errText(err),
+      [botonG("Reintentar","primary",()=>registrarPorteria(e,tipo,permiso)), botonG("Escanear otro","",iniciarCamara)]);
+  }
+}
 
 vista("login");

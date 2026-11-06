@@ -122,3 +122,14 @@ Edite antes `ADMIN_EMAILS` en `functions/index.js`.
 ## Costos
 
 Con el plan gratuito (Spark) tiene 50.000 lecturas y 20.000 escrituras diarias en Firestore, y 1 GB de almacenamiento. Una empresa de 30 personas con 4 marcas al día usa una fracción mínima de eso. Cada firma ocupa unos 5–10 KB.
+
+## Portería con código QR y permisos de salida
+
+1. **Publique las reglas nuevas** (obligatorio, sin esto el celador no podrá registrar):
+   `firebase deploy --only firestore:rules` (y `firebase deploy --only hosting` si usa Firebase Hosting).
+2. **Cree al celador**: panel del administrador → *Ajustes* → *Celadores*. Entra con su usuario y contraseña desde su celular.
+3. **Genere los QR**: panel → *Personal* → *Ver QR* (o «Generar QR para N personas sin código»). Se puede imprimir o enviar al empleado. Los empleados nuevos ya nacen con su QR.
+4. **Permisos**: el empleado pide el permiso en su sesión (*Permiso de salida*); el administrador lo aprueba en la pestaña *Permisos*.
+5. **En la puerta**: el celador toca *Escanear código QR*. Si el empleado está fuera, registra el ingreso. Si está dentro, solo registra la salida cuando hay un permiso aprobado hoy (queda «usado»); si no, muestra «Sin permiso de salida» y puede registrar una salida de fin de jornada.
+
+El QR es fijo por empleado. Si alguien lo pierde o lo comparte, genere uno nuevo (reemplaza al anterior).

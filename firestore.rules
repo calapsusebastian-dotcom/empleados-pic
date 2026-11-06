@@ -19,6 +19,13 @@ service cloud.firestore {
         ];
     }
 
+    // Celador (portero): su ficha existe en /celadores/{uid} y está activa.
+    function esCelador() {
+      return autenticado()
+        && exists(/databases/$(database)/documents/celadores/$(request.auth.uid))
+        && get(/databases/$(database)/documents/celadores/$(request.auth.uid)).data.activo == true;
+    }
+
     function rutaEmpleado() {
       return /databases/$(database)/documents/empleados/$(request.auth.uid);
     }
@@ -32,13 +39,54 @@ service cloud.firestore {
     // Ficha de cada empleado (el id del documento es su uid de Authentication).
     match /empleados/{uid} {
       allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
+      // El celador solo puede consultar una ficha concreta (al escanear el QR), no listar.
+      allow get: if esCelador();
       allow write: if esAdmin();
+    }
+
+    // Celadores: los crea y administra el administrador.
+    match /celadores/{uid} {
+      allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
+      allow write: if esAdmin();
+    }
+
+    // Permisos de salida: el empleado los solicita, el administrador los aprueba
+    // y el celador los marca como usados al registrar la salida.
+    match /permisos/{id} {
+      allow read: if esAdmin()
+        || esCelador()
+        || (autenticado() && resource.data.empleadoId == request.auth.uid);
+
+      allow create: if autenticado()
+        && exists(rutaEmpleado())
+        && get(rutaEmpleado()).data.activo == true
+        && request.resource.data.keys().hasOnly(
+             ['empleadoId','nombre','cedula','motivo','detalle','estado','creado'])
+        && request.resource.data.empleadoId == request.auth.uid
+        && request.resource.data.nombre == get(rutaEmpleado()).data.nombre
+        && request.resource.data.cedula == string(get(rutaEmpleado()).data.cedula)
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.creado == request.time
+        && request.resource.data.motivo is string
+        && request.resource.data.motivo.size() > 0
+        && request.resource.data.detalle is string
+        && request.resource.data.detalle.size() < 300;
+
+      allow update: if esAdmin()
+        || (esCelador()
+            && resource.data.estado == 'aprobado'
+            && request.resource.data.estado == 'usado'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado','usadoEn'])
+            && request.resource.data.usadoEn == request.time);
+
+      allow delete: if esAdmin();
     }
 
     // Marcas de ingreso y salida.
     match /marcas/{id} {
       // El admin lee todo; cada empleado solo sus propias marcas.
       allow read: if esAdmin()
+        || esCelador()
         || (autenticado() && resource.data.empleadoId == request.auth.uid);
 
       // Solo el propio empleado activo crea su marca, con la hora del servidor.
@@ -57,6 +105,21 @@ service cloud.firestore {
         && request.resource.data.firma is string
         && request.resource.data.firma.size() > 100
         && request.resource.data.firma.size() < 300000;
+
+      // El celador registra la marca al escanear el QR del empleado (sin firma).
+      allow create: if esCelador()
+        && exists(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId))
+        && get(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId)).data.activo == true
+        && request.resource.data.keys().hasOnly(
+             ['empleadoId','nombre','cedula','cargo','tipo','ts','motivo','detalle','firma','dispositivo','registradoPor'])
+        && request.resource.data.registradoPor == request.auth.uid
+        && request.resource.data.nombre == get(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId)).data.nombre
+        && request.resource.data.cedula == string(get(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId)).data.cedula)
+        && request.resource.data.ts == request.time
+        && request.resource.data.tipo in ['ingreso', 'salida']
+        && (request.resource.data.tipo == 'ingreso'
+            || (request.resource.data.motivo is string && request.resource.data.motivo.size() > 0))
+        && request.resource.data.firma == '';
 
       // Nadie modifica una marca; solo el admin puede eliminar.
       allow update: if false;

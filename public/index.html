@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14253F">
 <title>Control de Ingreso y Salida</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
@@ -594,6 +596,46 @@ tbody tr:hover{background:var(--sunk)}
 .note,.err{border-radius:8px}
 #loginForm::before{font-weight:700}
 .kiosk{margin-top:-44px}
+
+/* ===== QR, permisos y portería ===== */
+.qr-box{display:grid;justify-items:center;gap:10px;margin-top:10px}
+.qr-img{width:min(240px,70vw);height:auto;aspect-ratio:1;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;image-rendering:pixelated}
+.qr-img.big{width:min(300px,76vw)}
+.qr-modal{text-align:center;justify-items:center;max-width:380px}
+.qr-modal h3{width:100%}
+.sub-n,.pill.n{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--out);color:#fff;font-size:10.5px;font-weight:700;margin-left:4px}
+.sub.on .sub-n{background:#fff;color:var(--accent)}
+#permBadge{margin-left:6px;vertical-align:middle}
+.perm-lista{display:grid;gap:8px;margin-top:10px}
+.perm-item{display:grid;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12.5px}
+.perm-item .top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.pill.pend{background:var(--out-bg);color:var(--out)} .pill.apro{background:var(--in-bg);color:var(--in)}
+.pill.rech{background:var(--danger-bg);color:var(--danger)} .pill.usado{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.cel-form{display:grid;gap:10px}
+.perm-actions{display:flex;gap:6px;flex-wrap:wrap}
+.btn.ok-b{background:var(--in);border-color:var(--in);color:#fff}
+.btn.no-b{background:var(--surface);border-color:var(--danger);color:var(--danger)}
+
+.scan-box{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:1;max-width:420px;width:100%;margin:0 auto}
+.scan-box video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-frame{position:absolute;inset:14%;border:2px solid rgba(255,255,255,.9);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.38)}
+.res{display:grid;justify-items:center;gap:6px;text-align:center;padding:22px 16px;border-radius:12px;border:2px solid var(--line);background:var(--sunk)}
+.res.ok{border-color:var(--in);background:var(--in-bg)} .res.warn{border-color:var(--out);background:var(--out-bg)} .res.bad{border-color:var(--danger);background:var(--danger-bg)}
+.res-ico{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-size:30px;font-weight:800;color:#fff;background:var(--muted)}
+.res.ok .res-ico{background:var(--in)} .res.warn .res-ico{background:var(--out)} .res.bad .res-ico{background:var(--danger)}
+.res-tit{font-size:19px;font-weight:800;letter-spacing:-.01em}
+.res.ok .res-tit{color:var(--in)} .res.warn .res-tit{color:var(--out)} .res.bad .res-tit{color:var(--danger)}
+.res-nom{font-size:16px;font-weight:700}
+.res-sub{font-size:13px;color:var(--muted);max-width:34ch}
+.g-item{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px}
+
+@media print{
+  body.imprimiendo > *:not(#qModal){display:none!important}
+  body.imprimiendo #qModal{position:static;background:none;display:block;padding:0}
+  body.imprimiendo .modal-box{box-shadow:none;border:0;margin:0 auto}
+  body.imprimiendo .no-print{display:none!important}
+  body::before{display:none}
+}
 </style>
 </head>
 <body>
@@ -652,6 +694,23 @@ tbody tr:hover{background:var(--sunk)}
           <summary class="link" style="cursor:pointer">Mis últimos registros</summary>
           <div id="histList" style="margin-top:8px;display:grid;gap:6px"></div>
         </details>
+        <details class="mi-clave" id="miQr">
+          <summary class="link" style="cursor:pointer">Mi código QR</summary>
+          <div class="qr-box">
+            <img id="miQrImg" class="qr-img" alt="Mi código QR" hidden>
+            <p class="muted" id="miQrTxt" style="margin:0;text-align:center;font-size:12.5px"></p>
+          </div>
+        </details>
+        <details class="mi-clave" id="miPermiso">
+          <summary class="link" style="cursor:pointer">Permiso de salida <span id="permBadge" class="pill out" hidden></span></summary>
+          <form id="formPermiso" autocomplete="off">
+            <label class="field"><span>Motivo</span><select id="pMotivo"></select></label>
+            <label class="field"><span>Detalle</span><textarea id="pDetalle" rows="2" maxlength="250" placeholder="Explique el motivo y la hora estimada de regreso"></textarea></label>
+            <div id="pErr" class="err" hidden></div>
+            <button class="btn primary" type="submit">Solicitar permiso</button>
+          </form>
+          <div id="permLista" class="perm-lista"></div>
+        </details>
         <details class="mi-clave" id="miClave">
           <summary class="link" style="cursor:pointer">Cambiar mi contraseña</summary>
           <form id="formMiClave" autocomplete="off">
@@ -704,12 +763,44 @@ tbody tr:hover{background:var(--sunk)}
   </section>
 </main>
 
+<main id="vGuard" class="wrap kiosk" hidden>
+  <section class="card form-card">
+    <div class="step" style="margin-bottom:0">
+      <div class="lbl">Control de portería</div>
+      <p class="muted" style="margin:0">Pida al empleado que muestre su código QR y escanéelo con la cámara.</p>
+
+      <div id="gScan" class="scan-box" hidden>
+        <video id="gVideo" playsinline muted></video>
+        <div class="scan-frame" aria-hidden="true"></div>
+      </div>
+      <canvas id="gCanvas" hidden></canvas>
+      <div id="gErr" class="err" hidden></div>
+      <button class="btn primary big" id="gIniciar" type="button">Escanear código QR</button>
+      <button class="btn" id="gParar" type="button" hidden>Cancelar escaneo</button>
+
+      <div id="gRes" class="res" hidden>
+        <div class="res-ico" id="gIco" aria-hidden="true"></div>
+        <div class="res-tit" id="gTit"></div>
+        <div class="res-nom" id="gNom"></div>
+        <div class="res-sub" id="gSub"></div>
+        <div class="row-actions" id="gAcc" style="justify-content:center"></div>
+      </div>
+
+      <div id="gHist" hidden>
+        <div class="lbl small" style="margin-bottom:6px">Últimos escaneos</div>
+        <div id="gHistList" style="display:grid;gap:6px"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
 <main id="vAdmin" class="wrap admin" hidden>
   <div id="panel">
     <div class="admin-head">
       <div class="subtabs">
         <button class="sub on" data-sub="Reg" type="button">Registros</button>
         <button class="sub" data-sub="Res" type="button">Resumen diario</button>
+        <button class="sub" data-sub="Perm" type="button">Permisos <span id="subPermN" class="sub-n" hidden></span></button>
         <button class="sub" data-sub="Per" type="button">Personal</button>
         <button class="sub" data-sub="Aj" type="button">Ajustes</button>
       </div>
@@ -762,6 +853,15 @@ tbody tr:hover{background:var(--sunk)}
       <p class="foot-note">Horas trabajadas = suma de los tramos entre cada ingreso y la salida siguiente. El tiempo fuera por almuerzo o diligencias no se cuenta. Un ingreso sin salida en un día anterior se marca como «Sin salida» y no suma horas.</p>
     </section>
 
+    <section id="subPerm" hidden>
+      <div class="panel">
+        <h3>Permisos de salida <span class="muted num" id="permCount" style="font-size:13px"></span></h3>
+        <div id="permMsg" class="empty" hidden></div>
+        <div id="permAdmin"></div>
+        <p class="foot-note">Cuando usted aprueba un permiso, el celador verá «Salida autorizada» al escanear el QR del empleado. El permiso vale solo el día en que se aprueba y se usa una vez.</p>
+      </div>
+    </section>
+
     <section id="subPer" hidden>
       <div class="two">
         <form class="panel" id="formEmp">
@@ -791,10 +891,36 @@ tbody tr:hover{background:var(--sunk)}
           <div id="aEmpOk" class="ok-msg" hidden></div>
           <button class="btn primary" type="submit">Guardar</button>
         </form>
+        <div class="panel">
+          <h3>Celadores <span class="muted num" id="celCount" style="font-size:13px"></span></h3>
+          <form id="formCel" class="cel-form" autocomplete="off">
+            <label class="field"><span>Nombre</span><input type="text" id="cNombre" maxlength="80" required></label>
+            <label class="field"><span>Usuario</span><input type="text" id="cUsuario" maxlength="30" autocapitalize="none" spellcheck="false" required></label>
+            <label class="field"><span>Contraseña inicial (mínimo 6)</span><input type="text" id="cClave" maxlength="40" required></label>
+            <div id="cErr" class="err" hidden></div>
+            <div id="cOk" class="ok-msg" hidden></div>
+            <button class="btn primary" type="submit">Agregar celador</button>
+          </form>
+          <div id="celList"></div>
+          <p class="foot-note">El celador entra con su usuario y contraseña desde su celular y solo ve la pantalla de escaneo.</p>
+        </div>
       </div>
     </section>
   </div>
 </main>
+
+<div id="qModal" class="modal" hidden>
+  <div class="modal-box qr-modal" role="dialog" aria-modal="true" aria-labelledby="qTitulo">
+    <h3 id="qTitulo"></h3>
+    <img id="qImg" class="qr-img big" alt="Código QR del empleado">
+    <div id="qSub" class="muted" style="text-align:center"></div>
+    <div class="row-actions no-print" style="justify-content:center">
+      <button class="btn primary" id="qImprimir" type="button">Imprimir</button>
+      <button class="btn" id="qNuevo" type="button">Generar nuevo</button>
+      <button class="btn" id="qCerrar" type="button">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <div id="modal" class="modal" hidden>
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="mTitulo">
