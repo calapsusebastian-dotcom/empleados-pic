@@ -694,7 +694,7 @@ tbody tr:hover{background:var(--sunk)}
           <summary class="link" style="cursor:pointer">Mis últimos registros</summary>
           <div id="histList" style="margin-top:8px;display:grid;gap:6px"></div>
         </details>
-        <details class="mi-clave" id="miQr">
+        <details class="mi-clave" id="miQr" open>
           <summary class="link" style="cursor:pointer">Mi código QR</summary>
           <div class="qr-box">
             <img id="miQrImg" class="qr-img" alt="Mi código QR" hidden>
@@ -724,43 +724,8 @@ tbody tr:hover{background:var(--sunk)}
         </details>
       </div>
 
-      <div id="pasoTipo" hidden>
-        <div class="step">
-          <div class="lbl"><span class="n">02</span>Tipo de registro</div>
-          <div class="seg">
-            <button id="tIngreso" class="seg-b in" type="button"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 16l4-4-4-4"/><path d="M13 12H3"/></svg></span>Ingreso</button>
-            <button id="tSalida" class="seg-b out" type="button"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M16 16l4-4-4-4"/><path d="M20 12H10"/></svg></span>Salida</button>
-          </div>
-          <div id="aviso" class="note" hidden></div>
-        </div>
-
-        <div class="step" id="bloqueSalida" hidden>
-          <div class="lbl"><span class="n">03</span>Justificación de la salida</div>
-          <div class="chips" id="motivos"></div>
-          <label class="lbl small" for="detalle">Detalle <span class="opt" id="detReq">(obligatorio)</span></label>
-          <textarea id="detalle" rows="2" maxlength="300" placeholder="Explique brevemente el motivo y, si aplica, la hora estimada de regreso"></textarea>
-        </div>
-
-        <div class="step">
-          <div class="lbl"><span class="n" id="numFirma">03</span>Firma</div>
-          <div class="pad-wrap"><canvas id="firma" aria-label="Recuadro para firmar"></canvas><span class="pad-line">Firme sobre la línea</span></div>
-          <div class="pad-tools"><span class="muted" style="font-size:13px">Use el dedo, el lápiz o el mouse.</span><button id="limpiar" class="link" type="button">Borrar firma</button></div>
-        </div>
-
-        <div id="error" class="err" hidden></div>
-        <button id="confirmar" class="btn primary big" type="button">Registrar ingreso</button>
-      </div>
     </div>
-
-    <div id="stepOk" class="ok" hidden>
-      <div class="ok-badge" id="okBadge">✓</div>
-      <h2 id="okTitulo">Ingreso registrado</h2>
-      <div class="big-time" id="okHora"></div>
-      <div id="okNombre" style="font-weight:600"></div>
-      <div id="okExtra" class="muted"></div>
-      <button class="btn primary" id="nuevo" type="button">Cerrar sesión <span id="okCuenta" class="num"></span></button>
-    </div>
-  </section>
+</section>
 </main>
 
 <main id="vGuard" class="wrap kiosk" hidden>

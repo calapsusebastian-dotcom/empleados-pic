@@ -133,3 +133,6 @@ Con el plan gratuito (Spark) tiene 50.000 lecturas y 20.000 escrituras diarias e
 5. **En la puerta**: el celador toca *Escanear código QR*. Si el empleado está fuera, registra el ingreso. Si está dentro, solo registra la salida cuando hay un permiso aprobado hoy (queda «usado»); si no, muestra «Sin permiso de salida» y puede registrar una salida de fin de jornada.
 
 El QR es fijo por empleado. Si alguien lo pierde o lo comparte, genere uno nuevo (reemplaza al anterior).
+
+### Cambio: ya no hay firma ni marcado por el empleado
+Los ingresos y salidas los registra **solo el celador**. Al escanear el QR ve la ficha del empleado y elige *Registrar ingreso* o *Registrar salida*. La salida con permiso aprobado hoy queda «autorizada» y el permiso se marca como usado; sin permiso, el sistema avisa y el celador puede registrar una salida de fin de jornada. Vuelva a publicar `firestore.rules` para que los empleados dejen de poder crear marcas.

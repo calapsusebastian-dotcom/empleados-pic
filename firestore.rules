@@ -89,24 +89,7 @@ service cloud.firestore {
         || esCelador()
         || (autenticado() && resource.data.empleadoId == request.auth.uid);
 
-      // Solo el propio empleado activo crea su marca, con la hora del servidor.
-      allow create: if autenticado()
-        && exists(rutaEmpleado())
-        && get(rutaEmpleado()).data.activo == true
-        && request.resource.data.keys().hasOnly(
-             ['empleadoId','nombre','cedula','cargo','tipo','ts','motivo','detalle','firma','dispositivo'])
-        && request.resource.data.empleadoId == request.auth.uid
-        && request.resource.data.nombre == get(rutaEmpleado()).data.nombre
-        && request.resource.data.cedula == string(get(rutaEmpleado()).data.cedula)
-        && request.resource.data.ts == request.time
-        && request.resource.data.tipo in ['ingreso', 'salida']
-        && (request.resource.data.tipo == 'ingreso'
-            || (request.resource.data.motivo is string && request.resource.data.motivo.size() > 0))
-        && request.resource.data.firma is string
-        && request.resource.data.firma.size() > 100
-        && request.resource.data.firma.size() < 300000;
-
-      // El celador registra la marca al escanear el QR del empleado (sin firma).
+      // Solo el celador registra ingresos y salidas, al escanear el QR del empleado (sin firma).
       allow create: if esCelador()
         && exists(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId))
         && get(/databases/$(database)/documents/empleados/$(request.resource.data.empleadoId)).data.activo == true

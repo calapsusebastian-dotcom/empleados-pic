@@ -14,7 +14,7 @@ const MOTIVOS = ["Fin de jornada","Almuerzo","Diligencia personal","Cita médica
 const SIN_DETALLE = new Set(["Fin de jornada","Almuerzo"]);
 const $ = s => document.querySelector(s);
 const st = {
-  rol:null, user:null, sel:null, ultima:null, tipo:"ingreso", motivo:null, strokes:[], saving:false,
+  rol:null, user:null, sel:null, ultima:null,
   empleados:[], empLoaded:false, ajustes:{},
   marcas:[], marcasLoaded:false, marcasSlow:false, marcasErr:null, modalId:null,
   unsubs:[], unsubMarcas:null,
@@ -85,7 +85,6 @@ function tick(){
   $("#clockAmpm").textContent = ampm;
   $("#date").textContent = fmtFechaLarga(d);
   $("#secBar").style.transform = `scaleX(${d.getSeconds()/59})`;
-  if(st.sel && !st.saving) $("#confirmar").textContent = (st.tipo==="ingreso"?"Registrar ingreso":"Registrar salida")+" · "+fmtHora(d);
 }
 setInterval(tick,1000); tick();
 
@@ -96,8 +95,7 @@ function vista(v){ // "login" | "empleado" | "celador" | "admin"
   show($("#vGuard"), v==="celador");
   if(v!=="celador") detenerCamara();
   show($("#userBox"), v!=="login");
-  if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#pasoTipo"),false); show($("#stepOk"),false); show($("#stepForm"),true); }
-  requestAnimationFrame(padSize);
+  if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#stepForm"),true); }
 }
 
 /* ---------- ajustes (nombre de la empresa, lectura pública) ---------- */
@@ -130,10 +128,9 @@ $("#loginForm").addEventListener("submit", async ev=>{
   }finally{ btn.disabled = false; btn.textContent = "Entrar"; }
 });
 
-async function salir(){ clearInterval(cuenta); clearTimeout(inactividad); if(auth) await signOut(auth); }
+async function salir(){ clearTimeout(inactividad); if(auth) await signOut(auth); }
 $("#logout").onclick = salir;
 $("#cambiar").onclick = salir;
-$("#nuevo").onclick = salir;
 
 function limpiarSuscripciones(){
   st.unsubs.forEach(u=>{ try{u();}catch{} }); st.unsubs = [];
@@ -174,25 +171,25 @@ if(auth) onAuthStateChanged(auth, async user=>{
 let inactividad = null;
 function vigilarInactividad(){
   clearTimeout(inactividad);
-  if(st.rol==="empleado") inactividad = setTimeout(()=>{ if(!st.saving) salir(); }, 120000);
+  if(st.rol==="empleado") inactividad = setTimeout(salir, 120000);
 }
 ["pointerdown","keydown"].forEach(ev => document.addEventListener(ev, vigilarInactividad));
 
 async function seleccionar(e){
-  st.sel = e; st.ultima = null; st.motivo = null; st.strokes = []; $("#detalle").value = "";
-  show($("#loginForm"),false); show($("#stepOk"),false); show($("#stepForm"),true);
+  st.sel = e; st.ultima = null;
+  show($("#loginForm"),false); show($("#stepForm"),true);
   $("#selNombre").textContent = e.nombre; $("#selDoc").textContent = "C.C. "+e.cedula; $("#selCargo").textContent = e.cargo || "Sin cargo";
   $("#selUltima").textContent = "";
   $("#selAvatar").textContent = e.nombre.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
   const est = $("#selEstado"); est.className = "status"; est.textContent = "Consultando…";
   $("#histList").replaceChildren(mk("span","muted","Cargando…")); $("#historial").open = false; $("#miClave").open = false;
-  show($("#seleccion"),true); show($("#pasoTipo"),true); show($("#error"),false);
-  setTipo("ingreso"); requestAnimationFrame(padSize); vigilarInactividad();
+  show($("#seleccion"),true); vigilarInactividad();
   prepararQrYPermisos(e);
   let hist = [];
   try{
-    const q = query(collection(db,"marcas"), where("empleadoId","==",e.id), orderBy("ts","desc"), limit(6));
-    hist = (await getDocs(q)).docs.map(marcaDe);
+    // Sin orderBy para no requerir un índice compuesto: se ordena aquí.
+    const q = query(collection(db,"marcas"), where("empleadoId","==",e.id));
+    hist = (await getDocs(q)).docs.map(marcaDe).sort((x,y)=>y.ts-x.ts).slice(0,6);
   }catch(err){
     if(st.sel !== e) return;
     $("#histList").replaceChildren(mk("span","muted",errText(err)));
@@ -212,33 +209,6 @@ async function seleccionar(e){
     if(m.tipo==="salida" && m.motivo) row.append(mk("span","muted",m.motivo));
     hl.append(row);
   });
-  setTipo(dentro ? "salida" : "ingreso");
-}
-
-function setTipo(t){
-  st.tipo = t;
-  $("#tIngreso").classList.toggle("on", t==="ingreso"); $("#tSalida").classList.toggle("on", t==="salida");
-  $("#tIngreso").setAttribute("aria-pressed", t==="ingreso"); $("#tSalida").setAttribute("aria-pressed", t==="salida");
-  show($("#bloqueSalida"), t==="salida");
-  $("#numFirma").textContent = t==="salida" ? "04" : "03";
-  const u = st.ultima, av = $("#aviso");
-  let msg = "";
-  if(t==="ingreso" && u && u.tipo==="ingreso") msg = `Ya tiene un ingreso abierto desde el ${fmtFecha(u.ts)} a las ${fmtHora(u.ts)}. Si olvidó marcar la salida, informe al administrador.`;
-  if(t==="salida" && (!u || u.tipo==="salida")) msg = "No tiene un ingreso abierto. Verifique que eligió el tipo correcto.";
-  av.textContent = msg; show(av, !!msg);
-  renderMotivos(); tick(); requestAnimationFrame(padSize);
-}
-$("#tIngreso").onclick = () => setTipo("ingreso");
-$("#tSalida").onclick = () => setTipo("salida");
-
-function renderMotivos(){
-  const box = $("#motivos"); box.replaceChildren();
-  MOTIVOS.forEach(m=>{
-    const b = mk("button","chip"+(st.motivo===m?" on":""), m); b.type="button"; b.setAttribute("aria-pressed", st.motivo===m);
-    b.onclick = () => { st.motivo = m; renderMotivos(); };
-    box.append(b);
-  });
-  $("#detReq").textContent = st.motivo && SIN_DETALLE.has(st.motivo) ? "(opcional)" : "(obligatorio)";
 }
 
 /* ---------- empleado: mi código QR y permisos de salida ---------- */
@@ -309,85 +279,6 @@ $("#formMiClave").addEventListener("submit", async ev=>{
     bad(e.code==="auth/invalid-credential"||e.code==="auth/wrong-password" ? "La contraseña actual no es correcta." : errText(e));
   }
 });
-
-/* ---------- firma ---------- */
-const pad = $("#firma"), pctx = pad.getContext("2d");
-let trazo = null;
-function inkColor(){ return getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#111"; }
-function drawStrokes(ctx, w, h, color, lw){
-  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.lineJoin = "round";
-  for(const s of st.strokes){
-    if(s.length===1){ ctx.beginPath(); ctx.arc(s[0][0]*w, s[0][1]*h, lw/2, 0, Math.PI*2); ctx.fill(); continue; }
-    ctx.beginPath(); ctx.moveTo(s[0][0]*w, s[0][1]*h);
-    for(let i=1;i<s.length-1;i++){
-      const mx = (s[i][0]+s[i+1][0])/2*w, my = (s[i][1]+s[i+1][1])/2*h;
-      ctx.quadraticCurveTo(s[i][0]*w, s[i][1]*h, mx, my);
-    }
-    const l = s[s.length-1]; ctx.lineTo(l[0]*w, l[1]*h); ctx.stroke();
-  }
-}
-function padSize(){
-  const r = pad.getBoundingClientRect(); if(!r.width) return;
-  const dpr = window.devicePixelRatio || 1;
-  pad.width = Math.round(r.width*dpr); pad.height = Math.round(r.height*dpr);
-  pctx.setTransform(dpr,0,0,dpr,0,0); drawPad();
-}
-function drawPad(){ const r = pad.getBoundingClientRect(); pctx.clearRect(0,0,r.width,r.height); drawStrokes(pctx, r.width, r.height, inkColor(), 2.4); }
-function pt(e){ const r = pad.getBoundingClientRect(); return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)), Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]; }
-pad.addEventListener("pointerdown", e=>{ e.preventDefault(); try{pad.setPointerCapture(e.pointerId);}catch{} trazo=[pt(e)]; st.strokes.push(trazo); drawPad(); });
-pad.addEventListener("pointermove", e=>{ if(!trazo) return; e.preventDefault(); trazo.push(pt(e)); drawPad(); });
-["pointerup","pointercancel","pointerleave"].forEach(ev => pad.addEventListener(ev, ()=>{ trazo=null; }));
-$("#limpiar").onclick = () => { st.strokes = []; drawPad(); };
-window.addEventListener("resize", padSize);
-try{ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawPad); }catch{}
-const puntosFirma = () => st.strokes.reduce((a,s)=>a+s.length,0);
-function exportFirma(){
-  const c = document.createElement("canvas"); c.width = 480; c.height = 160;
-  const x = c.getContext("2d"); x.fillStyle = "#FFFFFF"; x.fillRect(0,0,480,160);
-  drawStrokes(x, 480, 160, "#111111", 2.6);
-  return c.toDataURL("image/png");
-}
-
-/* ---------- empleado: guardar marca ---------- */
-function fallo(msg){ const e = $("#error"); e.textContent = msg; show(e,true); }
-$("#confirmar").onclick = async () => {
-  show($("#error"),false);
-  if(!st.sel || st.rol!=="empleado") return fallo("Inicie sesión primero.");
-  const detalle = $("#detalle").value.trim();
-  if(st.tipo==="salida"){
-    if(!st.motivo) return fallo("Elija el motivo de la salida.");
-    if(!SIN_DETALLE.has(st.motivo) && detalle.length < 4) return fallo("Escriba el detalle de la salida.");
-  }
-  if(puntosFirma() < 8) return fallo("Falta la firma. Firme en el recuadro.");
-  st.saving = true; const btn = $("#confirmar"); btn.disabled = true; btn.textContent = "Guardando…";
-  const e = st.sel;
-  const data = {
-    empleadoId:auth.currentUser.uid, nombre:e.nombre, cedula:String(e.cedula), cargo:e.cargo||"",
-    tipo:st.tipo, ts:serverTimestamp(),
-    motivo: st.tipo==="salida" ? st.motivo : "", detalle: st.tipo==="salida" ? detalle : "",
-    firma: exportFirma(), dispositivo: navigator.userAgent.slice(0,180)
-  };
-  try{
-    await addDoc(collection(db,"marcas"), data);
-    exito({...data, ts:Date.now()});
-  }catch(err){ fallo(errText(err)); }
-  finally{ st.saving = false; btn.disabled = false; tick(); }
-};
-
-let cuenta = null;
-function exito(d){
-  show($("#stepForm"),false); show($("#stepOk"),true);
-  const b = $("#okBadge"); b.className = "ok-badge "+(d.tipo==="ingreso"?"in":"out"); b.textContent = d.tipo==="ingreso" ? "→" : "←";
-  $("#okTitulo").textContent = d.tipo==="ingreso" ? "Ingreso registrado" : "Salida registrada";
-  $("#okHora").textContent = fmtHora(d.ts);
-  $("#okNombre").textContent = d.nombre;
-  let extra = d.tipo==="salida" ? `Motivo: ${d.motivo}` : "Bienvenido(a). Que tenga una buena jornada.";
-  if(d.tipo==="salida" && st.ultima && st.ultima.tipo==="ingreso" && d.ts - st.ultima.ts < 20*3600e3) extra += ` · Permanencia: ${dur(d.ts - st.ultima.ts)}`;
-  $("#okExtra").textContent = extra;
-  let n = 8; $("#okCuenta").textContent = `(${n})`;
-  clearInterval(cuenta);
-  cuenta = setInterval(()=>{ n--; $("#okCuenta").textContent = `(${n})`; if(n<=0) salir(); }, 1000);
-}
 
 /* ---------- administración ---------- */
 document.querySelectorAll(".sub").forEach(b => b.onclick = () => {
@@ -957,25 +848,40 @@ async function procesarQr(texto){
     const recientes = (await getDocs(query(collection(db,"marcas"), where("ts",">=",desde), orderBy("ts","desc"), limit(1000)))).docs.map(marcaDe);
     const ult = recientes.find(m => m.empleadoId === e.id);
     const dentro = !!ult && ult.tipo==="ingreso";
-    if(!dentro) return registrarPorteria(e, "ingreso", null);
-
-    // Salida: requiere un permiso aprobado hoy
+    // Permisos del empleado: se busca uno aprobado hoy (para validar la salida)
     const hoy = ymd(new Date());
     const ps = (await getDocs(query(collection(db,"permisos"), where("empleadoId","==",e.id)))).docs
       .map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
         resuelto: x.resuelto && x.resuelto.toMillis ? x.resuelto.toMillis() : 0}; })
       .filter(p => p.estado==="aprobado" || p.estado==="pendiente");
-    const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0];
-    if(aprobado) return registrarPorteria(e, "salida", aprobado);
+    const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0] || null;
     const pend = ps.some(p=>p.estado==="pendiente");
-    anotarG("rechazado", e.nombre, "sin permiso");
-    return resultado("bad","✕","Sin permiso de salida", e.nombre,
-      pend ? "Tiene una solicitud pendiente: el administrador aún no la aprueba." : "No tiene un permiso aprobado para salir hoy.",
-      [botonG("Es fin de jornada: registrar salida","primary",()=>registrarPorteria(e,"salida",null)),
-       botonG("Escanear otro","",iniciarCamara)]);
+    return fichaPorteria({e, dentro, aprobado, pend});
   }catch(err){
     resultado("bad","!","No se pudo verificar","",errText(err),[botonG("Escanear de nuevo","primary",iniciarCamara)]);
   }
+}
+
+/** Ficha del empleado escaneado: el celador elige si registra ingreso o salida. */
+function fichaPorteria(c){
+  const {e, dentro, aprobado, pend} = c;
+  let sub = (e.cargo ? e.cargo+" · " : "") + (dentro ? "Está dentro" : "Está fuera");
+  if(aprobado) sub += " · Permiso de salida aprobado: " + aprobado.motivo;
+  else if(pend) sub += " · Solicitud de permiso pendiente";
+  resultado(aprobado ? "ok" : "", (e.nombre||"?")[0].toUpperCase(), "¿Qué desea registrar?", e.nombre, sub, [
+    botonG("Registrar ingreso", dentro ? "" : "primary", ()=>registrarPorteria(e,"ingreso",null)),
+    botonG("Registrar salida", dentro ? "primary" : "", ()=>salidaPorteria(c)),
+    botonG("Cancelar","",limpiarResultado)
+  ]);
+}
+/** Salida: con permiso aprobado se registra directo; sin permiso se pide confirmar. */
+function salidaPorteria(c){
+  const {e, aprobado, pend} = c;
+  if(aprobado) return registrarPorteria(e, "salida", aprobado);
+  resultado("bad","✕","Sin permiso de salida", e.nombre,
+    pend ? "Tiene una solicitud pendiente: el administrador aún no la aprueba." : "No tiene un permiso aprobado para salir hoy.",
+    [botonG("Es fin de jornada: registrar salida","primary",()=>registrarPorteria(e,"salida",null)),
+     botonG("Volver","",()=>fichaPorteria(c))]);
 }
 
 async function registrarPorteria(e, tipo, permiso){
