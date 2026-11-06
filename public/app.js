@@ -754,20 +754,21 @@ $("#formEmpresa").addEventListener("submit", async ev=>{
 });
 
 /* ---------- portería: el celador escanea el QR del empleado ---------- */
-const cam = {stream:null, raf:0, on:false};
+const cam = {stream:null, raf:0, on:false, modo:"normal"};
 const gHist = [];
 function iniciarPorteria(){
   gHist.length = 0; renderGHist(); limpiarResultado(); show($("#gErr"),false);
-  show($("#gIniciar"),true); show($("#gParar"),false); show($("#gScan"),false);
+  show($("#gIniciar"),true); show($("#gPermiso"),true); show($("#gParar"),false); show($("#gScan"),false);
 }
 function detenerCamara(){
   cam.on = false; cancelAnimationFrame(cam.raf);
   if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream = null; }
   const v = $("#gVideo"); if(v){ v.srcObject = null; }
-  show($("#gScan"),false); show($("#gParar"),false); show($("#gIniciar"),true);
+  show($("#gScan"),false); show($("#gParar"),false); show($("#gIniciar"),true); show($("#gPermiso"),true);
 }
 function limpiarResultado(){ show($("#gRes"),false); }
-async function iniciarCamara(){
+async function iniciarCamara(modo){
+  if(modo==="normal" || modo==="permiso") cam.modo = modo;   // los botones «Escanear siguiente» conservan el modo anterior
   const err = $("#gErr"); show(err,false); limpiarResultado();
   if(typeof jsQR !== "function"){ err.textContent = "No se pudo cargar el lector de QR. Revise la conexión y recargue la página."; return show(err,true); }
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ err.textContent = "Este navegador no permite usar la cámara. Abra la página con HTTPS en Chrome o Safari."; return show(err,true); }
@@ -778,7 +779,7 @@ async function iniciarCamara(){
     return show(err,true);
   }
   const v = $("#gVideo"); v.srcObject = cam.stream; await v.play().catch(()=>{});
-  show($("#gScan"),true); show($("#gParar"),true); show($("#gIniciar"),false);
+  show($("#gScan"),true); show($("#gParar"),true); show($("#gIniciar"),false); show($("#gPermiso"),false);
   cam.on = true; bucleEscaneo();
 }
 function bucleEscaneo(){
@@ -797,7 +798,8 @@ function bucleEscaneo(){
   }
   cam.raf = requestAnimationFrame(bucleEscaneo);
 }
-$("#gIniciar").onclick = iniciarCamara;
+$("#gIniciar").onclick = () => iniciarCamara("normal");
+$("#gPermiso").onclick = () => iniciarCamara("permiso");
 $("#gParar").onclick = detenerCamara;
 
 /** Muestra el resultado del escaneo. Sin botones propios, ofrece «Escanear siguiente». */
@@ -856,7 +858,8 @@ async function procesarQr(texto){
       .filter(p => p.estado==="aprobado" || p.estado==="pendiente");
     const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0] || null;
     const pend = ps.some(p=>p.estado==="pendiente");
-    return fichaPorteria({e, dentro, aprobado, pend});
+    const ctx = {e, dentro, aprobado, pend};
+    return cam.modo==="permiso" ? permisoPorteria(ctx) : fichaPorteria(ctx);
   }catch(err){
     resultado("bad","!","No se pudo verificar","",errText(err),[botonG("Escanear de nuevo","primary",iniciarCamara)]);
   }
@@ -874,6 +877,20 @@ function fichaPorteria(c){
     botonG("Cancelar","",limpiarResultado)
   ]);
 }
+/** Modo «salida con permiso»: solo deja salir si hay un permiso aprobado hoy. */
+function permisoPorteria(c){
+  const {e, dentro, aprobado, pend} = c;
+  if(!aprobado){
+    anotarG("rechazado", e.nombre, "sin permiso");
+    return resultado("bad","✕","Sin permiso aprobado", e.nombre,
+      pend ? "Tiene una solicitud pendiente: el administrador aún no la aprueba." : "No tiene un permiso aprobado para salir hoy.");
+  }
+  const det = aprobado.motivo + (aprobado.detalle ? " · " + aprobado.detalle : "");
+  const botones = [botonG("Confirmar salida con permiso","primary",()=>registrarPorteria(e,"salida",aprobado)), botonG("Cancelar","",limpiarResultado)];
+  if(!dentro) return resultado("warn","!","Figura fuera de la empresa", e.nombre, "Tiene permiso aprobado (" + det + "), pero no tiene un ingreso abierto.", botones);
+  return resultado("ok","✓","Permiso aprobado", e.nombre, det, botones);
+}
+
 /** Salida: con permiso aprobado se registra directo; sin permiso se pide confirmar. */
 function salidaPorteria(c){
   const {e, aprobado, pend} = c;

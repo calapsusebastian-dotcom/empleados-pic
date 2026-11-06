@@ -627,6 +627,8 @@ tbody tr:hover{background:var(--sunk)}
 .res.ok .res-tit{color:var(--in)} .res.warn .res-tit{color:var(--out)} .res.bad .res-tit{color:var(--danger)}
 .res-nom{font-size:16px;font-weight:700}
 .res-sub{font-size:13px;color:var(--muted);max-width:34ch}
+.g-permiso{border-color:var(--out);color:var(--out)}
+.g-permiso:hover{background:var(--out-bg);color:var(--out);border-color:var(--out)}
 .g-item{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px}
 
 @media print{
@@ -732,7 +734,7 @@ tbody tr:hover{background:var(--sunk)}
   <section class="card form-card">
     <div class="step" style="margin-bottom:0">
       <div class="lbl">Control de portería</div>
-      <p class="muted" style="margin:0">Pida al empleado que muestre su código QR y escanéelo con la cámara.</p>
+      <p class="muted" style="margin:0">Pida al empleado que muestre su código QR. Use «ingreso o salida» para el registro normal y «salida con permiso» cuando el empleado traiga un permiso aprobado.</p>
 
       <div id="gScan" class="scan-box" hidden>
         <video id="gVideo" playsinline muted></video>
@@ -740,7 +742,8 @@ tbody tr:hover{background:var(--sunk)}
       </div>
       <canvas id="gCanvas" hidden></canvas>
       <div id="gErr" class="err" hidden></div>
-      <button class="btn primary big" id="gIniciar" type="button">Escanear código QR</button>
+      <button class="btn primary big" id="gIniciar" type="button">Escanear ingreso o salida</button>
+      <button class="btn big g-permiso" id="gPermiso" type="button">Escanear salida con permiso</button>
       <button class="btn" id="gParar" type="button" hidden>Cancelar escaneo</button>
 
       <div id="gRes" class="res" hidden>
