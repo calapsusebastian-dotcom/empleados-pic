@@ -411,8 +411,8 @@ function abrirPanel(){
   }, err=>{ st.permisosErr = err; renderPermisosAdmin(); }));
   st.unsubs.push(onSnapshot(collection(db,"celadores"), snap=>{
     st.celadores = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"","es"));
-    renderCeladores();
-  }, ()=>{}));
+    st.celErr = null; st.celLoaded = true; renderCeladores();
+  }, err=>{ st.celErr = err; renderCeladores(); }));
   suscribirMarcas();
 }
 
@@ -488,7 +488,8 @@ async function generarQr(e){ await updateDoc(doc(db,"empleados",e.id), {qr:nuevo
 function renderCeladores(){
   const box = $("#celList"); box.replaceChildren();
   $("#celCount").textContent = st.celadores.length ? String(st.celadores.length) : "";
-  if(!st.celadores.length){ box.append(mk("div","empty","Aún no hay celadores. Agregue al primero con el formulario.")); return; }
+  if(st.celErr){ box.append(mk("div","err","No se pudo cargar la lista de celadores. " + errText(st.celErr) + " Si acaba de publicar las reglas, recargue la página (Ctrl+F5).")); return; }
+  if(!st.celadores.length){ box.append(mk("div","empty", st.celLoaded ? "Aún no hay celadores. Agregue al primero con el formulario." : "Cargando…")); return; }
   const wrap = mk("div","table-wrap"); const t = mk("table"); t.style.minWidth = "420px";
   t.innerHTML = "<thead><tr><th>Nombre</th><th>Usuario</th><th>Estado</th><th></th></tr></thead>";
   const tb = mk("tbody");
