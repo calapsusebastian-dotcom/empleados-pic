@@ -616,7 +616,8 @@ tbody tr:hover{background:var(--sunk)}
 @media print{
   body.imprimiendo > *:not(#qModal){display:none!important}
   body.imprimiendo #qModal{position:static;background:none;display:block;padding:0}
-  body.imprimiendo .modal-box{box-shadow:none;border:0;margin:0 auto}
+  /* sin la animación de entrada: al imprimir capturaría su primer cuadro (opacidad 0) y la hoja saldría en blanco */
+  body.imprimiendo .modal-box{box-shadow:none;border:0;margin:0 auto;animation:none!important;opacity:1!important;transform:none!important;max-height:none;overflow:visible}
   body.imprimiendo .no-print{display:none!important}
   body::before{display:none}
 }
