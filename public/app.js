@@ -952,15 +952,19 @@ async function procesarQr(texto){
       anotarG("rechazado", e.nombre, "desactivado");
       return resultado("bad","✕","Empleado desactivado", e.nombre, "No puede ingresar ni salir. Informe al administrador.");
     }
-    const ult = (await getDocs(query(collection(db,"marcas"), where("empleadoId","==",e.id), orderBy("ts","desc"), limit(1)))).docs.map(marcaDe)[0];
-    const dentro = ult && ult.tipo==="ingreso" && (Date.now()-ult.ts) < 20*3600e3;
+    // Marcas de las últimas 20 h (solo ordena por hora: no necesita índice compuesto); se filtra por empleado aquí.
+    const desde = Timestamp.fromMillis(Date.now() - 20*3600e3);
+    const recientes = (await getDocs(query(collection(db,"marcas"), where("ts",">=",desde), orderBy("ts","desc"), limit(1000)))).docs.map(marcaDe);
+    const ult = recientes.find(m => m.empleadoId === e.id);
+    const dentro = !!ult && ult.tipo==="ingreso";
     if(!dentro) return registrarPorteria(e, "ingreso", null);
 
     // Salida: requiere un permiso aprobado hoy
     const hoy = ymd(new Date());
-    const ps = (await getDocs(query(collection(db,"permisos"), where("empleadoId","==",e.id), where("estado","in",["aprobado","pendiente"])))).docs
+    const ps = (await getDocs(query(collection(db,"permisos"), where("empleadoId","==",e.id)))).docs
       .map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
-        resuelto: x.resuelto && x.resuelto.toMillis ? x.resuelto.toMillis() : 0}; });
+        resuelto: x.resuelto && x.resuelto.toMillis ? x.resuelto.toMillis() : 0}; })
+      .filter(p => p.estado==="aprobado" || p.estado==="pendiente");
     const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0];
     if(aprobado) return registrarPorteria(e, "salida", aprobado);
     const pend = ps.some(p=>p.estado==="pendiente");
