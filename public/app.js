@@ -850,33 +850,34 @@ async function procesarQr(texto){
     const recientes = (await getDocs(query(collection(db,"marcas"), where("ts",">=",desde), orderBy("ts","desc"), limit(1000)))).docs.map(marcaDe);
     const ult = recientes.find(m => m.empleadoId === e.id);
     const dentro = !!ult && ult.tipo==="ingreso";
-    // Permisos del empleado: se busca uno aprobado hoy (para validar la salida)
+    // Escáner normal: ingreso o salida, sin permisos.
+    if(cam.modo!=="permiso") return fichaPorteria({e, dentro});
+
+    // Escáner de permisos: se busca un permiso aprobado hoy
     const hoy = ymd(new Date());
     const ps = (await getDocs(query(collection(db,"permisos"), where("empleadoId","==",e.id)))).docs
       .map(d=>{ const x = d.data({serverTimestamps:"estimate"}); return {id:d.id, ...x,
         resuelto: x.resuelto && x.resuelto.toMillis ? x.resuelto.toMillis() : 0}; })
       .filter(p => p.estado==="aprobado" || p.estado==="pendiente");
-    const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((a,b)=>a.resuelto-b.resuelto)[0] || null;
+    const aprobado = ps.filter(p=>p.estado==="aprobado" && ymd(new Date(p.resuelto))===hoy).sort((x,y)=>x.resuelto-y.resuelto)[0] || null;
     const pend = ps.some(p=>p.estado==="pendiente");
-    const ctx = {e, dentro, aprobado, pend};
-    return cam.modo==="permiso" ? permisoPorteria(ctx) : fichaPorteria(ctx);
+    return permisoPorteria({e, dentro, aprobado, pend});
   }catch(err){
     resultado("bad","!","No se pudo verificar","",errText(err),[botonG("Escanear de nuevo","primary",iniciarCamara)]);
   }
 }
 
-/** Ficha del empleado escaneado: el celador elige si registra ingreso o salida. */
+/** Escáner normal: ficha del empleado; el celador elige ingreso o salida. */
 function fichaPorteria(c){
-  const {e, dentro, aprobado, pend} = c;
-  let sub = (e.cargo ? e.cargo+" · " : "") + (dentro ? "Está dentro" : "Está fuera");
-  if(aprobado) sub += " · Permiso de salida aprobado: " + aprobado.motivo;
-  else if(pend) sub += " · Solicitud de permiso pendiente";
-  resultado(aprobado ? "ok" : "", (e.nombre||"?")[0].toUpperCase(), "¿Qué desea registrar?", e.nombre, sub, [
+  const {e, dentro} = c;
+  const sub = (e.cargo ? e.cargo+" · " : "") + (dentro ? "Está dentro" : "Está fuera");
+  resultado("", (e.nombre||"?")[0].toUpperCase(), "¿Qué desea registrar?", e.nombre, sub, [
     botonG("Registrar ingreso", dentro ? "" : "primary", ()=>registrarPorteria(e,"ingreso",null)),
-    botonG("Registrar salida", dentro ? "primary" : "", ()=>salidaPorteria(c)),
+    botonG("Registrar salida", dentro ? "primary" : "", ()=>registrarPorteria(e,"salida",null)),
     botonG("Cancelar","",limpiarResultado)
   ]);
 }
+
 /** Modo «salida con permiso»: solo deja salir si hay un permiso aprobado hoy. */
 function permisoPorteria(c){
   const {e, dentro, aprobado, pend} = c;
@@ -889,16 +890,6 @@ function permisoPorteria(c){
   const botones = [botonG("Confirmar salida con permiso","primary",()=>registrarPorteria(e,"salida",aprobado)), botonG("Cancelar","",limpiarResultado)];
   if(!dentro) return resultado("warn","!","Figura fuera de la empresa", e.nombre, "Tiene permiso aprobado (" + det + "), pero no tiene un ingreso abierto.", botones);
   return resultado("ok","✓","Permiso aprobado", e.nombre, det, botones);
-}
-
-/** Salida: con permiso aprobado se registra directo; sin permiso se pide confirmar. */
-function salidaPorteria(c){
-  const {e, aprobado, pend} = c;
-  if(aprobado) return registrarPorteria(e, "salida", aprobado);
-  resultado("bad","✕","Sin permiso de salida", e.nombre,
-    pend ? "Tiene una solicitud pendiente: el administrador aún no la aprueba." : "No tiene un permiso aprobado para salir hoy.",
-    [botonG("Es fin de jornada: registrar salida","primary",()=>registrarPorteria(e,"salida",null)),
-     botonG("Volver","",()=>fichaPorteria(c))]);
 }
 
 async function registrarPorteria(e, tipo, permiso){
