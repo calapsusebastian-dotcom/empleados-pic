@@ -78,6 +78,7 @@ if(configLista){
 
 /* ---------- reloj ---------- */
 function tick(){
+  if(document.hidden) return;
   const d = new Date();
   let h = d.getHours(); const ampm = h<12 ? "a. m." : "p. m."; h = h%12 || 12;
   $("#clock").textContent = z(h)+":"+z(d.getMinutes());
@@ -87,15 +88,18 @@ function tick(){
   $("#secBar").style.transform = `scaleX(${d.getSeconds()/59})`;
 }
 setInterval(tick,1000); tick();
+document.addEventListener("visibilitychange", tick);
 
 /* ---------- vistas ---------- */
 function vista(v){ // "login" | "empleado" | "celador" | "admin"
+  document.body.classList.add("listo");
   show($("#heroKiosk"), v!=="admin"); show($("#heroAdmin"), v==="admin");
   show($("#vKiosk"), v==="login" || v==="empleado"); show($("#vAdmin"), v==="admin");
   show($("#vGuard"), v==="celador");
   if(v!=="celador") detenerCamara();
   show($("#userBox"), v!=="login");
-  if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#stepForm"),true); }
+  if(v==="login"){ show($("#loginForm"),true); show($("#seleccion"),false); show($("#stepForm"),true);
+    if(matchMedia("(pointer:fine)").matches) $("#lUsuario").focus({preventScroll:true}); }
 }
 
 /* ---------- ajustes (nombre de la empresa, lectura pública) ---------- */
@@ -109,6 +113,11 @@ if(db){
 
 /* ---------- inicio de sesión ---------- */
 function loginMsg(m){ const e = $("#loginMsg"); e.textContent = m; show(e, !!m); }
+$("#lVer").onclick = () => {
+  const i = $("#lClave"), ver = i.type === "password";
+  i.type = ver ? "text" : "password"; $("#lVer").textContent = ver ? "Ocultar" : "Mostrar";
+  $("#lVer").setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
+};
 $("#loginForm").addEventListener("submit", async ev=>{
   ev.preventDefault(); loginMsg("");
   if(!auth) return loginMsg("Firebase no está configurado todavía.");
@@ -484,6 +493,7 @@ function renderRegistros(){
   else if(!lista.length) m = st.marcas.length ? "Ningún registro coincide con los filtros." : "No hay registros en estas fechas. Aparecerán aquí en cuanto el personal marque ingreso o salida.";
   msg.textContent = m; show(msg, !!m); show($("#tablaWrap"), lista.length>0);
 
+  const frag = document.createDocumentFragment();
   lista.forEach(r=>{
     const tr = mk("tr");
     const tdP = mk("td"); tdP.append(mk("div",null,r.nombre), mk("small","num muted",r.cedula));
@@ -497,9 +507,10 @@ function renderRegistros(){
     tr.tabIndex = 0;
     tr.onclick = () => abrirModal(r.id, perm[r.id]);
     tr.onkeydown = e => { if(e.key==="Enter") abrirModal(r.id, perm[r.id]); };
-    tb.append(tr);
+    frag.append(tr);
   });
-  renderResumen();
+  tb.append(frag);
+  if(!$("#subRes").hidden) renderResumen();   // el resumen solo se recalcula si se está viendo
   $("#regFoot").textContent = st.marcas.length>=1000 ? "Se muestran los 1.000 registros más recientes del rango. Acorte las fechas para ver el resto." : (lista.length ? "Toque una fila para ver la firma en grande o eliminar un registro." : "");
 }
 
@@ -754,9 +765,20 @@ $("#formEmpresa").addEventListener("submit", async ev=>{
 });
 
 /* ---------- portería: el celador escanea el QR del empleado ---------- */
+let promesaJsQR = null;
+function cargarJsQR(){
+  if(typeof jsQR === "function") return Promise.resolve();
+  if(!promesaJsQR) promesaJsQR = new Promise((ok, mal)=>{
+    const sc = document.createElement("script"); sc.src = "jsQR.js";
+    sc.onload = ok; sc.onerror = () => { promesaJsQR = null; mal(new Error("jsQR")); };
+    document.head.append(sc);
+  });
+  return promesaJsQR;
+}
 const cam = {stream:null, raf:0, on:false, modo:"normal"};
 const gHist = [];
 function iniciarPorteria(){
+  cargarJsQR().catch(()=>{});   // se precarga mientras el celador ve la pantalla
   gHist.length = 0; renderGHist(); limpiarResultado(); show($("#gErr"),false);
   show($("#gIniciar"),true); show($("#gPermiso"),true); show($("#gParar"),false); show($("#gScan"),false);
 }
@@ -770,6 +792,7 @@ function limpiarResultado(){ show($("#gRes"),false); }
 async function iniciarCamara(modo){
   if(modo==="normal" || modo==="permiso") cam.modo = modo;   // los botones «Escanear siguiente» conservan el modo anterior
   const err = $("#gErr"); show(err,false); limpiarResultado();
+  try{ await cargarJsQR(); }catch{}
   if(typeof jsQR !== "function"){ err.textContent = "No se pudo cargar el lector de QR. Revise la conexión y recargue la página."; return show(err,true); }
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ err.textContent = "Este navegador no permite usar la cámara. Abra la página con HTTPS en Chrome o Safari."; return show(err,true); }
   try{
@@ -921,4 +944,6 @@ async function registrarPorteria(e, tipo, permiso){
   }
 }
 
-vista("login");
+// Sin sesión se muestra el login enseguida; con sesión se espera a Firebase (máx. 3 s) para no parpadear.
+if(!auth) vista("login");
+else setTimeout(()=>{ if(!document.body.classList.contains("listo")) vista("login"); }, 3000);
